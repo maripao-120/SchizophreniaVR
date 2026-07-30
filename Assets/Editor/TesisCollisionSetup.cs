@@ -8,7 +8,6 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Locomotion;
-using UnityEngine.XR.Interaction.Toolkit.Locomotion.Movement;
 using UnityEngine.XR.Interaction.Toolkit.Samples.StarterAssets;
 
 public static class TesisCollisionSetup
@@ -73,15 +72,7 @@ public static class TesisCollisionSetup
         CharacterController characterController = GetOrAddComponent<CharacterController>(xrRoot);
         ConfigureCharacterController(characterController);
 
-#pragma warning disable CS0618
-        CharacterControllerDriver driver = GetOrAddComponent<CharacterControllerDriver>(xrRoot);
-        driver.minHeight = 1.0f;
-        driver.maxHeight = 2.2f;
         DynamicMoveProvider moveProvider = FindCompatibleMoveProvider(scene, xrOrigin);
-        driver.locomotionProvider = moveProvider;
-        driver.enabled = false;
-        EditorUtility.SetDirty(driver);
-#pragma warning restore CS0618
 
         LocomotionMediator mediator = moveProvider.mediator;
         if (mediator == null)
@@ -97,30 +88,8 @@ public static class TesisCollisionSetup
         if (xrOrigin.Camera == null)
             throw new InvalidOperationException("El XR Origin existente no tiene una cámara configurada.");
 
-        XRPlayerCollisionFollower collisionFollower =
-            GetOrAddComponent<XRPlayerCollisionFollower>(xrRoot);
-        collisionFollower.ConfigureReferences(
-            xrOrigin,
-            characterController,
-            xrOrigin.Camera.transform);
-        collisionFollower.enabled = false;
-        EditorUtility.SetDirty(collisionFollower);
-
         if (xrOrigin.CameraFloorOffsetObject == null)
             throw new InvalidOperationException("El XR Origin no tiene Camera Floor Offset Object configurado.");
-
-        XRLocomotionDiagnostics diagnostics =
-            GetOrAddComponent<XRLocomotionDiagnostics>(xrRoot);
-        diagnostics.ConfigureReferences(
-            xrOrigin,
-            characterController,
-            bodyTransformer,
-            mediator,
-            moveProvider,
-            xrOrigin.Camera.transform,
-            xrOrigin.CameraFloorOffsetObject.transform);
-        diagnostics.enabled = false;
-        EditorUtility.SetDirty(diagnostics);
 
         DesktopKeyboardLocomotion desktopLocomotion =
             GetOrAddComponent<DesktopKeyboardLocomotion>(xrRoot);
@@ -152,8 +121,6 @@ public static class TesisCollisionSetup
             mediator,
             bodyTransformer,
             characterController,
-            collisionFollower,
-            diagnostics,
             desktopLocomotion);
 
         if (!EditorSceneManager.SaveScene(scene, ScenePath))
@@ -164,8 +131,7 @@ public static class TesisCollisionSetup
             $"XR Origin='{xrOrigin.name}', MoveProvider='{moveProvider.name}', " +
             $"LocomotionMediator='{mediator.name}', XRBodyTransformer='{bodyTransformer.name}', " +
             $"UseCharacterController={bodyTransformer.useCharacterControllerIfExists}, CharacterController=OK, " +
-            "CharacterControllerDriver=desactivado (deprecado), XRPlayerCollisionFollower=desactivado, " +
-            "XRLocomotionDiagnostics=desactivado, DesktopKeyboardLocomotion=activo, " +
+            "DesktopKeyboardLocomotion=activo, " +
             "DynamicMoveProvider=desactivado temporalmente para desktop, " +
             $"colliders configurados={configuredColliders}, Rigidbody XR Origin=ausente.");
     }
@@ -287,8 +253,6 @@ public static class TesisCollisionSetup
         LocomotionMediator mediator,
         XRBodyTransformer bodyTransformer,
         CharacterController characterController,
-        XRPlayerCollisionFollower collisionFollower,
-        XRLocomotionDiagnostics diagnostics,
         DesktopKeyboardLocomotion desktopLocomotion)
     {
         List<string> errors = new List<string>();
@@ -296,27 +260,11 @@ public static class TesisCollisionSetup
         if (xrRoot.GetComponent<CharacterController>() == null)
             errors.Add("falta CharacterController en el XR Origin");
 
-#pragma warning disable CS0618
-        if (xrRoot.GetComponent<CharacterControllerDriver>() == null)
-            errors.Add("falta CharacterControllerDriver en el XR Origin");
-#pragma warning restore CS0618
-
         if (xrRoot.GetComponent<Rigidbody>() != null)
             errors.Add("el XR Origin tiene un Rigidbody");
 
         if (xrRoot.GetComponents<CharacterController>().Length != 1)
             errors.Add("el XR Origin no tiene exactamente un CharacterController");
-
-#pragma warning disable CS0618
-        if (xrRoot.GetComponents<CharacterControllerDriver>().Length != 1)
-            errors.Add("el XR Origin no tiene exactamente un CharacterControllerDriver");
-#pragma warning restore CS0618
-
-        if (xrRoot.GetComponents<XRPlayerCollisionFollower>().Length != 1)
-            errors.Add("el XR Origin no tiene exactamente un XRPlayerCollisionFollower");
-
-        if (xrRoot.GetComponents<XRLocomotionDiagnostics>().Length != 1)
-            errors.Add("el XR Origin no tiene exactamente un XRLocomotionDiagnostics");
 
         if (xrRoot.GetComponents<DesktopKeyboardLocomotion>().Length != 1)
             errors.Add("el XR Origin no tiene exactamente un DesktopKeyboardLocomotion");
@@ -338,28 +286,6 @@ public static class TesisCollisionSetup
 
         if (characterController.gameObject != xrOrigin.Origin)
             errors.Add("el CharacterController no está en el objeto Origin");
-
-        if (collisionFollower.enabled)
-            errors.Add("XRPlayerCollisionFollower debe permanecer desactivado");
-
-        if (!collisionFollower.HasExpectedReferences(
-                xrOrigin,
-                characterController,
-                xrOrigin.Camera.transform))
-            errors.Add("XRPlayerCollisionFollower no conserva las referencias esperadas");
-
-        if (!diagnostics.HasExpectedReferences(
-                xrOrigin,
-                characterController,
-                bodyTransformer,
-                mediator,
-                moveProvider,
-                xrOrigin.Camera.transform,
-                xrOrigin.CameraFloorOffsetObject.transform))
-            errors.Add("XRLocomotionDiagnostics no tiene las referencias esperadas");
-
-        if (diagnostics.enabled)
-            errors.Add("XRLocomotionDiagnostics debe permanecer desactivado");
 
         if (!desktopLocomotion.enabled)
             errors.Add("DesktopKeyboardLocomotion debe estar activo");
@@ -390,8 +316,7 @@ public static class TesisCollisionSetup
             "TesisCollisionSetup validación: XR Origin único=OK; componentes XR existentes conservados=OK; " +
             $"DynamicMoveProvider='{moveProvider.name}' desactivado temporalmente; LocomotionMediator='{mediator.name}'=OK; " +
             $"XRBodyTransformer='{bodyTransformer.name}' UseCharacterController=ON; CharacterController=único; " +
-            "CharacterControllerDriver=deprecado/desactivado; XRPlayerCollisionFollower=desactivado; " +
-            "XRLocomotionDiagnostics=desactivado; DesktopKeyboardLocomotion=activo/configurado; " +
+            "DesktopKeyboardLocomotion=activo/configurado; " +
             "paredes BoxCollider=OK; " +
             "puerta y ventanas collider=OK; Rigidbody XR Origin=ausente.");
     }
