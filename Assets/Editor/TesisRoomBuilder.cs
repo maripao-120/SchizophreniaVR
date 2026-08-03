@@ -67,7 +67,6 @@ public static class TesisRoomBuilder
 
         CreatePlaceholder(architecture, "Door", PrimitiveType.Cube, new Vector3(-1.3f, 1f, -18.10f), new Vector3(0.7f, 2f, 0.08f), materials.Wood, false);
         CreatePlaceholder(architecture, "Window_01", PrimitiveType.Cube, new Vector3(1.91f, 1.35f, -16.20f), new Vector3(0.08f, 1f, 1.1f), materials.Glass, false);
-        CreatePlaceholder(architecture, "Window_02", PrimitiveType.Cube, new Vector3(1.2f, 1.35f, -18.10f), new Vector3(0.75f, 1f, 0.08f), materials.Glass, false);
 
         MoveGrabCube(scene, props);
         CreateRoomLight(room);

@@ -274,7 +274,6 @@ La siguiente tabla refleja la configuración esperada y validada por TesisCollis
 | Desk       | Room/Furniture/Desk         | BoxCollider      | true    | false      | true   | sí                 | Mueble sólido                                    |
 | Door       | Room/Architecture/Door      | BoxCollider      | true    | false      | true   | sí                 | Puerta sólida                                    |
 | Window_01  | Room/Architecture/Window_01 | BoxCollider      | true    | false      | true   | sí                 | Ventana sólida                                   |
-| Window_02  | Room/Architecture/Window_02 | BoxCollider      | true    | false      | true   | sí                 | Ventana sólida                                   |
 
 Algunas piezas adicionales, como Television y Mirror, pueden no bloquear según la construcción de la habitación porque el script de configuración no los incluye como elementos de bloqueo. CoatRack, en cambio, se gestiona como un objeto de la habitación que puede existir como un placeholder sólido. La diferencia entre un collider sólido y un trigger es importante: un sólido bloquea el movimiento de la cápsula; un trigger no impide el avance, sino que notifica entradas y salidas.
 

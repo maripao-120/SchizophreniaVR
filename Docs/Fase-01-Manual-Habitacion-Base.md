@@ -28,11 +28,11 @@ La Fase 1 se considera estructuralmente construida cuando existen los objetos pl
 
 El proyecto usa Unity `6000.3.20f1` y tiene como escena incluida en Build Settings únicamente `Assets/Scenes/SampleScene.unity` (`ProjectSettings/EditorBuildSettings.asset`, líneas 7-10). `Assets/Scenes/Habitacion.unity` existe como asset, pero no está incluida en la lista de escenas de compilación.
 
-| Escena | Estado inspeccionado | Papel en la Fase 1 |
-|---|---|---|
-| `Assets/Scenes/SampleScene.unity` | Escena principal. Contiene la base XR y, en el estado actual, `Room` y sus hijos. | Escena de trabajo y de ejecución. |
-| `Assets/Scenes/Habitacion.unity` | Asset separado. El archivo contiene configuración de escena y no forma parte de Build Settings. | No se utiliza para esta fase. |
-| `Assets/XR_Simulator_Test.unity` | Escena de prueba separada con `GrabCube`, `Directional Light`, `Global Volume`, `Floor` y `XR Interaction Manager`. | No fue modificada por `TesisRoomBuilder`; sirve como referencia/prueba independiente. |
+| Escena                            | Estado inspeccionado                                                                                                | Papel en la Fase 1                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `Assets/Scenes/SampleScene.unity` | Escena principal. Contiene la base XR y, en el estado actual, `Room` y sus hijos.                                   | Escena de trabajo y de ejecución.                                                     |
+| `Assets/Scenes/Habitacion.unity`  | Asset separado. El archivo contiene configuración de escena y no forma parte de Build Settings.                     | No se utiliza para esta fase.                                                         |
+| `Assets/XR_Simulator_Test.unity`  | Escena de prueba separada con `GrabCube`, `Directional Light`, `Global Volume`, `Floor` y `XR Interaction Manager`. | No fue modificada por `TesisRoomBuilder`; sirve como referencia/prueba independiente. |
 
 Se eligió `SampleScene` porque es la única escena habilitada en Build Settings y porque ya contenía la infraestructura de interacción que debía conservarse. Trabajar sobre `Habitacion` habría producido una escena que no era la principal; trabajar sobre `XR_Simulator_Test` habría mezclado una escena de prueba con la demo principal.
 
@@ -101,13 +101,13 @@ No se agregó un segundo `Global Volume`, ni se recrearon los objetos XR. `GrabC
 
 ### 3.2 Responsabilidad de cada grupo
 
-| Grupo | Responsabilidad |
-|---|---|
-| `Structure` | Geometría principal y colliders de la habitación: piso, techo y paredes. |
-| `Furniture` | Mobiliario visual placeholder. Los muebles no reciben `Rigidbody` ni `XRGrabInteractable`. |
+| Grupo          | Responsabilidad                                                                                    |
+| -------------- | -------------------------------------------------------------------------------------------------- |
+| `Structure`    | Geometría principal y colliders de la habitación: piso, techo y paredes.                           |
+| `Furniture`    | Mobiliario visual placeholder. Los muebles no reciben `Rigidbody` ni `XRGrabInteractable`.         |
 | `Architecture` | Representaciones visuales de puerta y ventanas. No se abren huecos ni se implementa funcionalidad. |
-| `Props` | Objetos de prueba o elementos sueltos. Actualmente contiene `GrabCube`. |
-| `Lighting` | Organización de la iluminación propia de la habitación. Contiene `RoomLight`. |
+| `Props`        | Objetos de prueba o elementos sueltos. Actualmente contiene `GrabCube`.                            |
+| `Lighting`     | Organización de la iluminación propia de la habitación. Contiene `RoomLight`.                      |
 
 Todos los grupos aparecen con posición local `(0, 0, 0)`, rotación local identidad y escala local `(1, 1, 1)`. `Room` también es una raíz con esos valores.
 
@@ -119,17 +119,17 @@ Una escena `.unity` es un asset serializado por Unity. Aunque su representación
 
 ### 4.2 Qué hizo OpenCode y qué hizo Unity
 
-| Acción | Responsable |
-|---|---|
-| Inspeccionar el repositorio y comprobar el estado de Git | OpenCode, mediante herramientas de inspección. |
-| Crear `Assets/Editor/TesisRoomBuilder.cs` | OpenCode, escribiendo el archivo autorizado. |
-| Importar el script y generar su `.meta` | Unity Editor. |
-| Compilar el script y registrar errores de compilación | Unity Editor; el resultado debe revisarse en Console. No existe un log de compilación persistente en el repositorio inspeccionado. |
-| Ejecutar el menú o el método batch | Unity Editor, cuando el usuario lo ejecuta. |
-| Crear `GameObject`, primitivas, componentes y luz | La herramienta, ejecutada dentro del dominio de Unity Editor. |
-| Crear los `.mat` y sus `.meta` | `AssetDatabase` y Unity. |
-| Serializar `SampleScene.unity` | `EditorSceneManager.SaveScene`. |
-| Ver la habitación en Play Mode y probar XR | Usuario en Unity. No se deduce de los archivos. |
+| Acción                                                   | Responsable                                                                                                                        |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Inspeccionar el repositorio y comprobar el estado de Git | OpenCode, mediante herramientas de inspección.                                                                                     |
+| Crear `Assets/Editor/TesisRoomBuilder.cs`                | OpenCode, escribiendo el archivo autorizado.                                                                                       |
+| Importar el script y generar su `.meta`                  | Unity Editor.                                                                                                                      |
+| Compilar el script y registrar errores de compilación    | Unity Editor; el resultado debe revisarse en Console. No existe un log de compilación persistente en el repositorio inspeccionado. |
+| Ejecutar el menú o el método batch                       | Unity Editor, cuando el usuario lo ejecuta.                                                                                        |
+| Crear `GameObject`, primitivas, componentes y luz        | La herramienta, ejecutada dentro del dominio de Unity Editor.                                                                      |
+| Crear los `.mat` y sus `.meta`                           | `AssetDatabase` y Unity.                                                                                                           |
+| Serializar `SampleScene.unity`                           | `EditorSceneManager.SaveScene`.                                                                                                    |
+| Ver la habitación en Play Mode y probar XR               | Usuario en Unity. No se deduce de los archivos.                                                                                    |
 
 Durante la primera tentativa batch registrada en la sesión de implementación, Unity devolvió un error porque el proyecto estaba abierto en otra instancia. Posteriormente el estado actual contiene los materiales y la escena generada; los archivos prueban el resultado serializado, pero no sustituyen una prueba de Play Mode.
 
@@ -147,13 +147,11 @@ Durante la primera tentativa batch registrada en la sesión de implementación, 
 10. Guarda y refresca los assets.
 11. Escribe un resumen en Console.
 
-
 ## 5. Explicación detallada de `TesisRoomBuilder.cs`
 
 ### 5.1 `using` y estructura general
 
 El archivo se encuentra en `Assets/Editor/TesisRoomBuilder.cs`. Su clase es `public static`, por lo que no necesita un componente en un GameObject ni una instancia en la escena.
-
 
 ```csharp
 using System;
@@ -187,7 +185,6 @@ private static void BuildRoomFromMenu()
 
 `MenuItem` registra una entrada en el menú del Editor. El método estático privado puede invocarse desde el menú, pero no es el método usado por `-executeMethod`.
 
-
 ### 5.3 Ejecución desde el menú y por línea de comandos
 
 ```csharp
@@ -214,7 +211,6 @@ public static void BuildRoomFromCommandLine()
 
 El método es público y estático porque Unity busca métodos de ese formato al usar `-executeMethod`. No captura la excepción: si falla, el proceso batch puede terminar con error claro.
 
-
 ### 5.4 Apertura y validación de la escena
 
 ```csharp
@@ -224,7 +220,6 @@ if (!scene.IsValid() || !scene.isLoaded || scene.path != ScenePath)
 ```
 
 La herramienta no depende de que el usuario haya abierto previamente la escena correcta. `OpenSceneMode.Single` sustituye la escena abierta por `SampleScene`. La comprobación evita continuar con una escena incorrecta o no cargada. El riesgo evitado es crear una habitación en otra escena.
-
 
 ### 5.5 Creación de jerarquía
 
@@ -240,7 +235,7 @@ Transform props = GetOrCreateChild(room, "Props");
 
 `Room` se busca solo entre las raíces de la escena. Los grupos se buscan como hijos directos mediante `Transform.Find`. Esto limita la administración a la jerarquía de la habitación y no afecta objetos XR de otras ramas.
 
-```csharp
+````csharp
 ### 5.6 Búsqueda y reutilización de grupos
 
 ```csharp
@@ -254,7 +249,7 @@ private static Transform GetOrCreateRoot(Scene scene, string objectName)
     SceneManager.MoveGameObjectToScene(created, scene);
     return created.transform;
 }
-```
+````
 
 `GetRootGameObjects` evita una búsqueda global repetida. Si no existe `Room`, `new GameObject` crea un contenedor vacío y `MoveGameObjectToScene` garantiza que pertenezca a la escena abierta.
 
@@ -273,7 +268,6 @@ private static Transform GetOrCreateChild(Transform parent, string objectName)
 
 El segundo parámetro `false` conserva una configuración local controlada al establecer la relación padre-hijo. Si el grupo ya existe, se reutiliza y no se duplica.
 
-
 ```csharp
 private static void SetIdentity(Transform transform)
 {
@@ -284,7 +278,6 @@ private static void SetIdentity(Transform transform)
 ```
 
 Esta función hace que los contenedores no introduzcan desplazamientos, rotaciones o escalas adicionales. Las posiciones de los hijos quedan interpretables directamente en coordenadas de la escena.
-
 
 ### 5.7 Creación o actualización de primitivas
 
@@ -320,8 +313,7 @@ En la primera ejecución se crea la primitiva. En ejecuciones posteriores se reu
 
 El nombre `worldPosition` es descriptivo, pero el script no hace una conversión matemática explícita. Como `Room` y sus grupos se fuerzan a identidad y `Room` es raíz en el estado actual, esas coordenadas coinciden con las coordenadas mundiales. Si un futuro cambio coloca `Room` en otra posición, esta implementación debería revisarse antes de reutilizarla.
 
-
-```csharp
+````csharp
 ### 5.8 Materiales y colliders
 
 ```csharp
@@ -334,12 +326,11 @@ if (colliderEnabled && collider == null)
     placeholder.AddComponent<BoxCollider>();
 else if (collider != null)
     collider.enabled = colliderEnabled;
-```
+````
 
 `MeshRenderer.sharedMaterial` asigna el asset compartido sin crear una copia de material por objeto. Para los objetos visuales, el collider predeterminado se conserva pero se desactiva; no se elimina. Para estructura y muebles con colisión se conserva o se añade un `BoxCollider` si falta.
 
 El método no añade `Rigidbody` ni `XRGrabInteractable` a los muebles. Por tanto, son geometría estática con colisión, no objetos físicos agarrables.
-
 
 ```csharp
 foreach (GameObject rootObject in scene.GetRootGameObjects())
@@ -360,7 +351,6 @@ La herramienta busca `GrabCube` solamente entre las raíces. Si lo encuentra, ca
 
 Una consecuencia importante es que, si `GrabCube` ya está dentro de `Room/Props`, esta función no lo vuelve a buscar recursivamente. En el estado actual eso no produce duplicados ni modifica sus componentes, pero significa que la reubicación automática está diseñada principalmente para el estado inicial en que era raíz.
 
-
 ### 5.10 Iluminación
 
 ```csharp
@@ -376,7 +366,6 @@ light.color = new Color(1f, 0.92f, 0.82f);
 ```
 
 Se crea una `Point Light` cálida para hacer visible el placeholder. La `Directional Light` existente no es tocada. `RoomLight` está en `(0, 2.4, -16.22)`, tiene rango `8` e intensidad `2` en la serialización actual.
-
 
 ### 5.11 Creación y reutilización de materiales
 
@@ -402,7 +391,6 @@ EditorUtility.SetDirty(material);
 
 Se actualiza el color genérico y, cuando está disponible, la propiedad URP `_BaseColor`. `SetDirty` indica a Unity que el asset debe guardarse.
 
-
 ### 5.12 Guardado, refresco y errores
 
 ```csharp
@@ -416,10 +404,6 @@ Debug.Log("TesisRoomBuilder: SampleScene construida. Room: Structure (6), Furnit
 ```
 
 La escena se marca como modificada antes de guardarla. `SaveAssets` persiste los materiales y `Refresh` actualiza la ventana Project. El mensaje resume el resultado. Las excepciones de apertura, shader o guardado detienen la ejecución; el menú además las muestra en un diálogo.
-
-
-
-
 
 ## 6. Idempotencia
 
@@ -436,7 +420,6 @@ Idempotencia significa que repetir el generador deja el mismo estado final, en l
 - La herramienta no borra hijos desconocidos dentro de `Room`.
 - La herramienta no busca ni reconfigura globalmente el XR Origin, el Simulator, el Manager ni el `Floor` raíz.
 
-
 ```text
 Primera ejecución:
 SampleScene -> se crea Room -> se crean grupos -> se crean primitivas y materiales.
@@ -449,8 +432,6 @@ El objetivo es poder regenerar el placeholder después de ajustar el script sin 
 
 La idempotencia no implica que el script sea un reconciliador universal: si un usuario cambia el tipo de una primitiva existente, el método no la reemplaza; si añade objetos ajenos dentro de `Room`, no los elimina; y `MoveGrabCube` solo revisa raíces.
 
-
-
 ## 7. Generación de primitivas
 
 ### 7.1 Tipos y conceptos
@@ -460,50 +441,42 @@ La idempotencia no implica que el script sea un reconciliador universal: si un u
 - `GameObject` vacío: `Room`, grupos y `Lighting`.
 - `Point Light`: `RoomLight`, que es un `GameObject` con componente `Light` de tipo `Point`.
 
-
-
-
 ### 7.2 Tabla de objetos y colliders
 
-| Objeto | Primitiva | Posición `(x,y,z)` | Escala `(x,y,z)` | Grupo | Collider |
-|---|---|---:|---:|---|---|
-| `Floor` de `Room` | Cube | `(0, -0.05, -16.22)` | `(3.94, 0.10, 4.00)` | Structure | BoxCollider activo |
-| `Ceiling` | Cube | `(0, 2.85, -16.22)` | `(3.94, 0.10, 4.00)` | Structure | BoxCollider activo |
-| `Wall_North` | Cube | `(0, 1.40, -18.17)` | `(3.94, 2.80, 0.10)` | Structure | BoxCollider activo |
-| `Wall_South` | Cube | `(0, 1.40, -14.27)` | `(3.94, 2.80, 0.10)` | Structure | BoxCollider activo |
-| `Wall_East` | Cube | `(2.02, 1.40, -16.22)` | `(0.10, 2.80, 4.00)` | Structure | BoxCollider activo |
-| `Wall_West` | Cube | `(-2.02, 1.40, -16.22)` | `(0.10, 2.80, 4.00)` | Structure | BoxCollider activo |
-| `Bed` | Cube | `(0, 0.25, -17.20)` | `(1.40, 0.50, 1.70)` | Furniture | BoxCollider activo |
-| `Nightstand` | Cube | `(1.10, 0.30, -17.20)` | `(0.40, 0.60, 0.40)` | Furniture | BoxCollider activo |
-| `Wardrobe` | Cube | `(-1.65, 0.90, -15.45)` | `(0.50, 1.80, 0.80)` | Furniture | BoxCollider activo |
-| `Desk` | Cube | `(-0.75, 0.40, -14.70)` | `(1.00, 0.80, 0.55)` | Furniture | BoxCollider activo |
-| `Television` | Cube | `(0.95, 1.20, -14.36)` | `(0.80, 0.55, 0.08)` | Furniture | BoxCollider desactivado |
-| `Mirror` | Cube | `(-1.91, 1.30, -17.00)` | `(0.08, 1.00, 0.55)` | Furniture | BoxCollider desactivado |
-| `CoatRack` | Cylinder | `(1.65, 0.75, -14.65)` | `(0.12, 0.75, 0.12)` | Furniture | Collider de Cylinder activo |
-| `Door` | Cube | `(-1.30, 1.00, -18.10)` | `(0.70, 2.00, 0.08)` | Architecture | BoxCollider desactivado |
-| `Window_01` | Cube | `(1.91, 1.35, -16.20)` | `(0.08, 1.00, 1.10)` | Architecture | BoxCollider desactivado |
-| `Window_02` | Cube | `(1.20, 1.35, -18.10)` | `(0.75, 1.00, 0.08)` | Architecture | BoxCollider desactivado |
+| Objeto            | Primitiva |      Posición `(x,y,z)` |     Escala `(x,y,z)` | Grupo        | Collider                    |
+| ----------------- | --------- | ----------------------: | -------------------: | ------------ | --------------------------- |
+| `Floor` de `Room` | Cube      |    `(0, -0.05, -16.22)` | `(3.94, 0.10, 4.00)` | Structure    | BoxCollider activo          |
+| `Ceiling`         | Cube      |     `(0, 2.85, -16.22)` | `(3.94, 0.10, 4.00)` | Structure    | BoxCollider activo          |
+| `Wall_North`      | Cube      |     `(0, 1.40, -18.17)` | `(3.94, 2.80, 0.10)` | Structure    | BoxCollider activo          |
+| `Wall_South`      | Cube      |     `(0, 1.40, -14.27)` | `(3.94, 2.80, 0.10)` | Structure    | BoxCollider activo          |
+| `Wall_East`       | Cube      |  `(2.02, 1.40, -16.22)` | `(0.10, 2.80, 4.00)` | Structure    | BoxCollider activo          |
+| `Wall_West`       | Cube      | `(-2.02, 1.40, -16.22)` | `(0.10, 2.80, 4.00)` | Structure    | BoxCollider activo          |
+| `Bed`             | Cube      |     `(0, 0.25, -17.20)` | `(1.40, 0.50, 1.70)` | Furniture    | BoxCollider activo          |
+| `Nightstand`      | Cube      |  `(1.10, 0.30, -17.20)` | `(0.40, 0.60, 0.40)` | Furniture    | BoxCollider activo          |
+| `Wardrobe`        | Cube      | `(-1.65, 0.90, -15.45)` | `(0.50, 1.80, 0.80)` | Furniture    | BoxCollider activo          |
+| `Desk`            | Cube      | `(-0.75, 0.40, -14.70)` | `(1.00, 0.80, 0.55)` | Furniture    | BoxCollider activo          |
+| `Television`      | Cube      |  `(0.95, 1.20, -14.36)` | `(0.80, 0.55, 0.08)` | Furniture    | BoxCollider desactivado     |
+| `Mirror`          | Cube      | `(-1.91, 1.30, -17.00)` | `(0.08, 1.00, 0.55)` | Furniture    | BoxCollider desactivado     |
+| `CoatRack`        | Cylinder  |  `(1.65, 0.75, -14.65)` | `(0.12, 0.75, 0.12)` | Furniture    | Collider de Cylinder activo |
+| `Door`            | Cube      | `(-1.30, 1.00, -18.10)` | `(0.70, 2.00, 0.08)` | Architecture | BoxCollider desactivado     |
+| `Window_01`       | Cube      |  `(1.91, 1.35, -16.20)` | `(0.08, 1.00, 1.10)` | Architecture | BoxCollider desactivado     |
 
 La escena inspeccionada confirma, por ejemplo, el `BoxCollider` activo de `Wardrobe`, el `BoxCollider` desactivado de `Television` y el `BoxCollider` desactivado de `Door`. Los muebles no tienen `Rigidbody` en las entradas serializadas que corresponden a las primitivas generadas.
-
-
-
 
 ## 8. Materiales generados
 
 ### 8.1 Materiales reales y asignación
 
-| Material | Ruta | GUID | Color `_BaseColor` | Uso |
-|---|---|---|---|---|
-| `Mat_Floor` | `Assets/Materials/TesisRoom/Mat_Floor.mat` | `341d580de2170784abc3961176fe2740` | `(0.38, 0.40, 0.42, 1)` | `Structure/Floor` |
-| `Mat_Wall` | `Assets/Materials/TesisRoom/Mat_Wall.mat` | `37747c8714cff4340b12094d56d49bcc` | `(0.88, 0.86, 0.78, 1)` | `Ceiling` y paredes |
-| `Mat_Wood` | `Assets/Materials/TesisRoom/Mat_Wood.mat` | `bee818be81ba2c24c95247f079851ad1` | `(0.42, 0.23, 0.12, 1)` | `Nightstand`, `Wardrobe`, `Desk`, `Door`, `CoatRack` |
-| `Mat_Dark` | `Assets/Materials/TesisRoom/Mat_Dark.mat` | `56a5a58be67164049a8f6284056ca668` | `(0.035, 0.04, 0.05, 1)` | `Television` |
-| `Mat_GlassPlaceholder` | `Assets/Materials/TesisRoom/Mat_GlassPlaceholder.mat` | `5a99b6c7cd9796444bc2e0ec7638ec90` | `(0.45, 0.75, 0.85, 1)` | `Mirror`, `Window_01`, `Window_02` |
-| `Mat_Bed` | `Assets/Materials/TesisRoom/Mat_Bed.mat` | `1a8e18c0ebfd19a40847fa67cd17e160` | `(0.28, 0.38, 0.48, 1)` | `Bed` |
+| Material               | Ruta                                                  | GUID                               | Color `_BaseColor`       | Uso                                                  |
+| ---------------------- | ----------------------------------------------------- | ---------------------------------- | ------------------------ | ---------------------------------------------------- |
+| `Mat_Floor`            | `Assets/Materials/TesisRoom/Mat_Floor.mat`            | `341d580de2170784abc3961176fe2740` | `(0.38, 0.40, 0.42, 1)`  | `Structure/Floor`                                    |
+| `Mat_Wall`             | `Assets/Materials/TesisRoom/Mat_Wall.mat`             | `37747c8714cff4340b12094d56d49bcc` | `(0.88, 0.86, 0.78, 1)`  | `Ceiling` y paredes                                  |
+| `Mat_Wood`             | `Assets/Materials/TesisRoom/Mat_Wood.mat`             | `bee818be81ba2c24c95247f079851ad1` | `(0.42, 0.23, 0.12, 1)`  | `Nightstand`, `Wardrobe`, `Desk`, `Door`, `CoatRack` |
+| `Mat_Dark`             | `Assets/Materials/TesisRoom/Mat_Dark.mat`             | `56a5a58be67164049a8f6284056ca668` | `(0.035, 0.04, 0.05, 1)` | `Television`                                         |
+| `Mat_GlassPlaceholder` | `Assets/Materials/TesisRoom/Mat_GlassPlaceholder.mat` | `5a99b6c7cd9796444bc2e0ec7638ec90` | `(0.45, 0.75, 0.85, 1)`  | `Mirror`, `Window_01`, `Window_02`                   |
+| `Mat_Bed`              | `Assets/Materials/TesisRoom/Mat_Bed.mat`              | `1a8e18c0ebfd19a40847fa67cd17e160` | `(0.28, 0.38, 0.48, 1)`  | `Bed`                                                |
 
 En `SampleScene.unity`, los `MeshRenderer` apuntan a esos GUID mediante `m_Materials`. Por ejemplo, el `Floor` de `Room` usa `341d580de2170784abc3961176fe2740`, `Wardrobe` usa `bee818be81ba2c24c95247f079851ad1` y `Television` usa `56a5a58be67164049a8f6284056ca668`.
-
 
 ### 8.2 Material, shader, renderer, `.mat` y `.meta`
 
@@ -515,11 +488,6 @@ En `SampleScene.unity`, los `MeshRenderer` apuntan a esos GUID mediante `m_Mater
 - **`.meta`:** archivo auxiliar de Unity que conserva el GUID y datos del importer.
 - **GUID:** identificador estable que permite resolver referencias incluso si cambia el nombre o la carpeta del asset.
 
-
-
-
-
-
 ## 9. Construcción de la habitación
 
 ### 9.1 Dimensiones y posiciones
@@ -529,16 +497,7 @@ En `SampleScene.unity`, los `MeshRenderer` apuntan a esos GUID mediante `m_Mater
 - altura Y: `2.80 m`;
 - grosor de piso, techo y paredes: `0.10 m`.
 
-
-
-
-
-
-
-
-
 - `Room/Structure/Floor`: posición `(0, -0.05, -16.22)`, escala `(3.94, 0.10, 4.00)`, con `BoxCollider`.
-
 
 1. el origen y altura del XR Origin;
 2. la altura efectiva de `Main Camera` después del tracking;
@@ -546,9 +505,6 @@ En `SampleScene.unity`, los `MeshRenderer` apuntan a esos GUID mediante `m_Mater
 4. el piso heredado, que está en una posición y escala completamente distintas;
 5. la posición del simulador, que en la instancia tiene una modificación aproximada `(0, 1.87, -18.45)`;
 6. la diferencia entre el origen de seguimiento XR y el origen geométrico de la habitación.
-
-
-
 
 ### 9.2 Relación con XR Origin y causa probable de flotación
 
@@ -565,26 +521,18 @@ La herramienta conserva `XR Origin`, controladores, locomoción, `XR Interaction
 - `XR Interaction Manager`;
 - Input Actions y referencias del paquete.
 
-
-
-
-
-
-
 ## 11. GrabCube
 
 ### 11.1 Componentes comprobados
 
-| Componente | Estado |
-|---|---|
-| `Transform` | Posición `(0.55, 0.30, -15.00)`, escala `(1,1,1)`, padre `Room/Props`. |
-| `MeshFilter` | Malla integrada de Cube, `fileID: 10202`. |
-| `MeshRenderer` | Activo. Usa una referencia de material con GUID `31321ba15b8f8eb4c954353edc038b1d`; no se encontró un `.meta` de proyecto con ese GUID, por lo que no se atribuye un nombre de material. |
-| `BoxCollider` | Activo, tamaño `(1,1,1)`, no trigger. |
-| `Rigidbody` | Masa `1`, gravedad activa, `isKinematic: 0`, sin restricciones. |
-| `XRGrabInteractable` | Activo. Referencia a `XR Interaction Manager`, interaction layer bits `1`, movimiento dinámico y lanzamiento configurado. |
-
-
+| Componente           | Estado                                                                                                                                                                                   |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Transform`          | Posición `(0.55, 0.30, -15.00)`, escala `(1,1,1)`, padre `Room/Props`.                                                                                                                   |
+| `MeshFilter`         | Malla integrada de Cube, `fileID: 10202`.                                                                                                                                                |
+| `MeshRenderer`       | Activo. Usa una referencia de material con GUID `31321ba15b8f8eb4c954353edc038b1d`; no se encontró un `.meta` de proyecto con ese GUID, por lo que no se atribuye un nombre de material. |
+| `BoxCollider`        | Activo, tamaño `(1,1,1)`, no trigger.                                                                                                                                                    |
+| `Rigidbody`          | Masa `1`, gravedad activa, `isKinematic: 0`, sin restricciones.                                                                                                                          |
+| `XRGrabInteractable` | Activo. Referencia a `XR Interaction Manager`, interaction layer bits `1`, movimiento dinámico y lanzamiento configurado.                                                                |
 
 ### 11.2 Flujo de agarre
 
@@ -594,15 +542,6 @@ La herramienta conserva `XR Origin`, controladores, locomoción, `XR Interaction
 4. `XRGrabInteractable` permite seleccionar y seguir el controlador.
 5. `Rigidbody` permite movimiento físico, gravedad y velocidad de lanzamiento.
 6. Al soltar, el objeto conserva la respuesta física configurada.
-
-
-
-
-
-
-
-
-
 
 ## 12. DontDestroyOnLoad
 
@@ -614,14 +553,9 @@ La herramienta conserva `XR Origin`, controladores, locomoción, `XR Interaction
 
 1. Presionar `Play`.
 2. En la ventana `Hierarchy`, localizar y expandir `DontDestroyOnLoad`.
-4. Seleccionar cada hijo y observar el nombre, prefab source y componentes en `Inspector`.
-5. Revisar si contiene un manager, controlador simulado, sistema de UI o singleton de un paquete.
-6. Detener `Play Mode` y confirmar que el objeto desaparece y que la escena editada no recibe hijos nuevos.
-
-
-
-
-
+3. Seleccionar cada hijo y observar el nombre, prefab source y componentes en `Inspector`.
+4. Revisar si contiene un manager, controlador simulado, sistema de UI o singleton de un paquete.
+5. Detener `Play Mode` y confirmar que el objeto desaparece y que la escena editada no recibe hijos nuevos.
 
 ## 13. EventSystem
 
@@ -653,12 +587,6 @@ El mensaje reportado `Failed to get haptic capabilities of XRSimulatedController
 - **No comprobado:** el objeto exacto que aparece en `DontDestroyOnLoad` durante Play Mode.
 - **Revisión recomendada:** expandir el objeto en runtime y revisar `EventSystem`, `InputSystemUIInputModule`, módulos XR UI y referencias de acciones.
 
-
-
-
-
-
-
 ## 16. Cómo reconstruir la Fase 1 desde cero
 
 1. Instalar Unity `6000.3.20f1`.
@@ -673,16 +601,16 @@ El mensaje reportado `Failed to get haptic capabilities of XRSimulatedController
 
 ## 17. Archivos involucrados
 
-| Archivo o carpeta | Función | Estado | Git | Importancia |
-|---|---|---|---|---|
-| `TesisRoomBuilder.cs` | Generador idempotente. | Creado. | Sí. | Alta. |
-| `SampleScene.unity` | Escena principal. | Existente y contiene Room. | Sí. | Alta. |
-| `Assets/Materials/TesisRoom/` | Materiales placeholder. | Creada con seis `.mat`. | Sí. | Alta. |
-| Archivos `.meta` | GUID e importación. | Generados por Unity. | Sí. | Alta. |
-| Prefabs XR de `Assets/Samples` | XR Origin y Simulator. | Existentes, no modificados. | Sí. | Alta. |
-| `AGENTS.md` | Reglas del proyecto. | Existente, no modificado. | Sí. | Alta. |
-| `Packages/manifest.json` | Dependencias y versiones. | Existente, no modificado. | Sí. | Alta. |
-| `ProjectSettings` relevantes | Unity y Build Settings. | Existentes, no modificados por el manual. | Sí. | Alta. |
+| Archivo o carpeta              | Función                   | Estado                                    | Git | Importancia |
+| ------------------------------ | ------------------------- | ----------------------------------------- | --- | ----------- |
+| `TesisRoomBuilder.cs`          | Generador idempotente.    | Creado.                                   | Sí. | Alta.       |
+| `SampleScene.unity`            | Escena principal.         | Existente y contiene Room.                | Sí. | Alta.       |
+| `Assets/Materials/TesisRoom/`  | Materiales placeholder.   | Creada con seis `.mat`.                   | Sí. | Alta.       |
+| Archivos `.meta`               | GUID e importación.       | Generados por Unity.                      | Sí. | Alta.       |
+| Prefabs XR de `Assets/Samples` | XR Origin y Simulator.    | Existentes, no modificados.               | Sí. | Alta.       |
+| `AGENTS.md`                    | Reglas del proyecto.      | Existente, no modificado.                 | Sí. | Alta.       |
+| `Packages/manifest.json`       | Dependencias y versiones. | Existente, no modificado.                 | Sí. | Alta.       |
+| `ProjectSettings` relevantes   | Unity y Build Settings.   | Existentes, no modificados por el manual. | Sí. | Alta.       |
 
 ## 18. Glosario
 
@@ -718,9 +646,6 @@ El siguiente paso recomendado es únicamente alinear correctamente la habitació
 - un **Error** indica una falla que normalmente requiere atención y puede interrumpir una operación;
 - la ausencia de háptica en un simulador no implica ausencia de detección de colliders o selección del interactable.
 
-
-
-
 - Existen los grupos `Structure`, `Furniture`, `Architecture`, `Props` y `Lighting`.
 - Existen las seis primitivas estructurales, siete muebles y tres elementos arquitectónicos definidos por la herramienta.
 - Existe `RoomLight` como `Point Light` con rango `8` e intensidad `2`.
@@ -728,7 +653,6 @@ El siguiente paso recomendado es únicamente alinear correctamente la habitació
 - La escena contiene `XR Origin (XR Rig)`, `XR Interaction Simulator` y `XR Interaction Manager`.
 - `GrabCube` tiene `MeshFilter`, `MeshRenderer`, `BoxCollider`, `Rigidbody` y `XRGrabInteractable`.
 - El `Floor` raíz y el nuevo `Room/Structure/Floor` coexisten.
-
 
 - Controladores simulados visibles: requiere prueba actual en Play Mode.
 - `GrabCube` agarrable: requiere prueba actual en Play Mode; la configuración serializada es compatible con esa interacción.
@@ -740,9 +664,6 @@ El siguiente paso recomendado es únicamente alinear correctamente la habitació
 - Ajuste de escala y distribución.
 - Validación con visor físico.
 - Cualquier integración narrativa de la Fase 2.
-
-
-
 
 2. Crear o abrir un proyecto con URP.
 3. Usar URP `17.3.0`, Input System `1.19.0` y XR Interaction Toolkit `3.3.2`.
@@ -764,8 +685,6 @@ El siguiente paso recomendado es únicamente alinear correctamente la habitació
 14. Abrir `SampleScene`, presionar `Play`, confirmar el simulador, probar movimiento, colisiones y agarre.
 15. Detener Play Mode y revisar que no haya cambios runtime persistentes en la escena.
 
-
-
 |---|---|---|---|---|
 | `Assets/Editor/TesisRoomBuilder.cs` | Herramienta idempotente de construcción. | Creado para la fase. | Sí, debe versionarse. | Alta. |
 | `Assets/Editor/TesisRoomBuilder.cs.meta` | GUID del script. | Generado por Unity. | Sí. | Alta para referencias del asset. |
@@ -782,8 +701,6 @@ El siguiente paso recomendado es únicamente alinear correctamente la habitació
 | `Packages/manifest.json` | Versiones y dependencias. | Existente, no modificado por esta fase. | Sí. | Determina APIs disponibles. |
 | `ProjectSettings/EditorBuildSettings.asset` | Lista de escenas de compilación. | Existente, solo `SampleScene`. | Sí. | Define la escena principal. |
 | `ProjectSettings/ProjectVersion.txt` | Versión exacta de Unity. | Existente. | Sí. | Reproducibilidad. |
-
-
 
 - **Component:** módulo que aporta comportamiento o datos a un GameObject.
 - **Transform:** componente que define posición, rotación, escala y jerarquía.
@@ -806,8 +723,6 @@ El siguiente paso recomendado es únicamente alinear correctamente la habitació
 - **Idempotencia:** propiedad de obtener el mismo estado final al repetir una operación.
 - **Batch mode:** ejecución de Unity sin interfaz mediante argumentos de línea de comandos.
 - **`DontDestroyOnLoad`:** mecanismo de runtime para conservar objetos al cambiar de escena.
-
-
 
 - Coexisten el `Floor` raíz heredado y `Room/Structure/Floor`, con posiciones, mallas y escalas diferentes.
 - El XR Origin tiene raíz en Y `1` y la cámara posee un offset local Y `1.36144`; estos valores deben compararse con la cara superior del piso.

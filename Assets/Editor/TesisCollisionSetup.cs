@@ -37,7 +37,6 @@ public static class TesisCollisionSetup
     {
         "Door",
         "Window_01",
-        "Window_02"
     };
 
     [MenuItem(MenuPath)]
