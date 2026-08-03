@@ -73,7 +73,7 @@ public static class TesisPhase2Validator
         ValidateGlobalNameCount(scene, "Note", report);
         ValidateGlobalNameCount(scene, "Phase2_FirstHallucination", report);
 
-        FirstGrabTrigger firstGrab = ValidateBottle(scene, bottle, report);
+        FirstGrabTrigger firstGrab = ValidateBottle(bottle, report);
         NoteView noteView = ValidateNote(note, report);
         FirstHallucinationSequence sequence = ValidateSequence(
             phaseObject,
@@ -88,7 +88,6 @@ public static class TesisPhase2Validator
     }
 
     private static FirstGrabTrigger ValidateBottle(
-        Scene scene,
         Transform bottle,
         ValidationReport report)
     {
@@ -128,17 +127,13 @@ public static class TesisPhase2Validator
             "FirstGrabTrigger one-shot component",
             $"MedicineBottle needs one FirstGrabTrigger; found {triggers.Length}.");
 
-        Transform grabCube = FindUniqueByName(scene, "GrabCube", report, false);
-        XRGrabInteractable grabCubeInteractable =
-            grabCube != null ? grabCube.GetComponent<XRGrabInteractable>() : null;
-        if (grabComponents.Length == 1 && grabCubeInteractable != null)
+        if (grabComponents.Length == 1)
         {
             int bottleBits = GetInteractionLayerBits(grabComponents[0]);
-            int cubeBits = GetInteractionLayerBits(grabCubeInteractable);
             report.Check(
-                bottleBits != 0 && (bottleBits & cubeBits) != 0,
+                (bottleBits & InteractionLayerMask.GetMask("Default")) != 0,
                 "MedicineBottle Interaction Layer",
-                "MedicineBottle Interaction Layer is incompatible with GrabCube.");
+                "MedicineBottle Interaction Layer must include Default for the scene interactors.");
             report.Check(
                 grabComponents[0].interactionManager != null,
                 "MedicineBottle interaction manager",
@@ -365,15 +360,6 @@ public static class TesisPhase2Validator
             "XR Interaction Simulator preserved",
             "XR Interaction Simulator is missing.");
 
-        Transform grabCube = FindUniqueByName(scene, "GrabCube", report, false);
-        bool grabCubeValid = grabCube != null &&
-                             grabCube.GetComponent<Collider>() != null &&
-                             grabCube.GetComponent<Rigidbody>() != null &&
-                             grabCube.GetComponent<XRGrabInteractable>() != null;
-        report.Check(
-            grabCubeValid,
-            "GrabCube preserved and grabbable",
-            "GrabCube or one of its interaction components is missing.");
     }
 
     private static void ValidateMissingScripts(Scene scene, ValidationReport report)

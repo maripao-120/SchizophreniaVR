@@ -7,6 +7,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.SceneManagement;
+using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
 
 public static class TesisPhase2Builder
@@ -56,10 +57,8 @@ public static class TesisPhase2Builder
         Transform nightstand = FindRequiredDirectChild(furniture, "Nightstand");
         Transform structure = FindRequiredDirectChild(room, "Structure");
         Transform northWall = FindRequiredDirectChild(structure, "Wall_North");
-        Transform grabCube = FindRequiredDescendant(scene, "GrabCube");
-        XRGrabInteractable grabReference = grabCube.GetComponent<XRGrabInteractable>();
-        if (grabReference == null)
-            throw new InvalidOperationException("GrabCube has no XRGrabInteractable to copy.");
+        XRInteractionManager interactionManager =
+            FindRequiredSceneComponent<XRInteractionManager>(scene);
 
         Material bottleMaterial = GetOrCreateMaterial(
             "MAT_Phase2_MedicineBottle",
@@ -76,7 +75,7 @@ public static class TesisPhase2Builder
         Transform bottle = BuildBottle(
             narrativeProps,
             nightstand,
-            grabReference,
+            interactionManager,
             bottleMaterial,
             capMaterial,
             out FirstGrabTrigger firstGrabTrigger);
@@ -140,7 +139,7 @@ public static class TesisPhase2Builder
     private static Transform BuildBottle(
         Transform parent,
         Transform nightstand,
-        XRGrabInteractable grabReference,
+        XRInteractionManager interactionManager,
         Material bottleMaterial,
         Material capMaterial,
         out FirstGrabTrigger firstGrabTrigger)
@@ -208,8 +207,8 @@ public static class TesisPhase2Builder
         XRGrabInteractable grabInteractable =
             GetOrAddSingleComponent<XRGrabInteractable>(bottle.gameObject);
         Undo.RecordObject(grabInteractable, "Configure Phase 2 bottle interaction");
-        grabInteractable.interactionManager = grabReference.interactionManager;
-        grabInteractable.interactionLayers = grabReference.interactionLayers;
+        grabInteractable.interactionManager = interactionManager;
+        grabInteractable.interactionLayers = InteractionLayerMask.GetMask("Default");
         grabInteractable.colliders.Clear();
         grabInteractable.colliders.Add(collider);
 
@@ -560,16 +559,16 @@ public static class TesisPhase2Builder
         return matches[0];
     }
 
-    private static Transform FindRequiredDescendant(Scene scene, string name)
+    private static T FindRequiredSceneComponent<T>(Scene scene) where T : Component
     {
-        Transform[] matches = UnityEngine.Object.FindObjectsByType<Transform>(
+        T[] matches = UnityEngine.Object.FindObjectsByType<T>(
                 FindObjectsInactive.Include,
                 FindObjectsSortMode.None)
-            .Where(item => item.gameObject.scene == scene && item.name == name)
+            .Where(item => item.gameObject.scene == scene)
             .ToArray();
         if (matches.Length != 1)
             throw new InvalidOperationException(
-                $"Expected exactly one scene object '{name}', found {matches.Length}.");
+                $"Expected exactly one scene {typeof(T).Name}, found {matches.Length}.");
         return matches[0];
     }
 

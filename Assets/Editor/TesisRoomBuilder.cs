@@ -68,7 +68,6 @@ public static class TesisRoomBuilder
         CreatePlaceholder(architecture, "Door", PrimitiveType.Cube, new Vector3(-1.3f, 1f, -18.10f), new Vector3(0.7f, 2f, 0.08f), materials.Wood, false);
         CreatePlaceholder(architecture, "Window_01", PrimitiveType.Cube, new Vector3(1.91f, 1.35f, -16.20f), new Vector3(0.08f, 1f, 1.1f), materials.Glass, false);
 
-        MoveGrabCube(scene, props);
         CreateRoomLight(room);
 
         EditorSceneManager.MarkSceneDirty(scene);
@@ -77,7 +76,7 @@ public static class TesisRoomBuilder
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        Debug.Log("TesisRoomBuilder: SampleScene construida. Room: Structure (6), Furniture (7), Architecture (3), Props y Lighting/RoomLight. GrabCube reubicado si existía.");
+        Debug.Log("TesisRoomBuilder: SampleScene construida. Room: Structure (6), Furniture (7), Architecture (3), Props y Lighting/RoomLight.");
     }
 
     private static Transform GetOrCreateRoot(Scene scene, string objectName)
@@ -122,20 +121,6 @@ public static class TesisRoomBuilder
             collider.enabled = colliderEnabled;
 
         return placeholder;
-    }
-
-    private static void MoveGrabCube(Scene scene, Transform props)
-    {
-        foreach (GameObject rootObject in scene.GetRootGameObjects())
-        {
-            if (rootObject.name != "GrabCube")
-                continue;
-
-            Transform grabCube = rootObject.transform;
-            grabCube.SetParent(props, true);
-            grabCube.position = new Vector3(0.55f, 0.30f, -15.00f);
-            return;
-        }
     }
 
     private static void CreateRoomLight(Transform room)
