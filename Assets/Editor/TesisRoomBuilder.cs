@@ -54,7 +54,6 @@ public static class TesisRoomBuilder
         CreatePlaceholder(structure, "Ceiling", PrimitiveType.Cube, new Vector3(0f, 2.85f, RoomCenterZ), new Vector3(3.94f, 0.1f, 4f), materials.Wall, true);
         CreatePlaceholder(structure, "Wall_North", PrimitiveType.Cube, new Vector3(0f, 1.4f, -18.17f), new Vector3(3.94f, 2.8f, 0.1f), materials.Wall, true);
         CreatePlaceholder(structure, "Wall_South", PrimitiveType.Cube, new Vector3(0f, 1.4f, -14.27f), new Vector3(3.94f, 2.8f, 0.1f), materials.Wall, true);
-        CreatePlaceholder(structure, "Wall_East", PrimitiveType.Cube, new Vector3(2.02f, 1.4f, RoomCenterZ), new Vector3(0.1f, 2.8f, 4f), materials.Wall, true);
         CreatePlaceholder(structure, "Wall_West", PrimitiveType.Cube, new Vector3(-2.02f, 1.4f, RoomCenterZ), new Vector3(0.1f, 2.8f, 4f), materials.Wall, true);
 
         CreatePlaceholder(furniture, "Bed", PrimitiveType.Cube, new Vector3(0f, 0.25f, -17.20f), new Vector3(1.4f, 0.5f, 1.7f), materials.Bed, true);
@@ -66,7 +65,11 @@ public static class TesisRoomBuilder
         CreatePlaceholder(furniture, "CoatRack", PrimitiveType.Cylinder, new Vector3(1.65f, 0.75f, -14.65f), new Vector3(0.12f, 0.75f, 0.12f), materials.Wood, true);
 
         CreatePlaceholder(architecture, "Door", PrimitiveType.Cube, new Vector3(-1.3f, 1f, -18.10f), new Vector3(0.7f, 2f, 0.08f), materials.Wood, false);
-        CreatePlaceholder(architecture, "Window_01", PrimitiveType.Cube, new Vector3(1.91f, 1.35f, -16.20f), new Vector3(0.08f, 1f, 1.1f), materials.Glass, false);
+        TesisPhase3WindowBuilder.BuildOrConfigureForRoom(
+            scene,
+            structure,
+            architecture,
+            materials.Wall);
 
         CreateRoomLight(room);
 

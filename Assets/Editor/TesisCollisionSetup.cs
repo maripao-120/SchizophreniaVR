@@ -21,7 +21,6 @@ public static class TesisCollisionSetup
         "Ceiling",
         "Wall_North",
         "Wall_South",
-        "Wall_East",
         "Wall_West"
     };
 
@@ -36,7 +35,22 @@ public static class TesisCollisionSetup
     private static readonly string[] ArchitectureObjects =
     {
         "Door",
-        "Window_01",
+    };
+
+    private static readonly string[] WindowFrameObjects =
+    {
+        "Frame_Top",
+        "Frame_Bottom",
+        "Frame_Left",
+        "Frame_Right",
+    };
+
+    private static readonly string[] EastWallObjects =
+    {
+        "WallEast_Window_Left",
+        "WallEast_Window_Right",
+        "WallEast_Window_Bottom",
+        "WallEast_Window_Top",
     };
 
     [MenuItem(MenuPath)]
@@ -107,6 +121,14 @@ public static class TesisCollisionSetup
         configuredColliders += ConfigureGroup(room, "Structure", StructureObjects, true);
         configuredColliders += ConfigureGroup(room, "Furniture", FurnitureObjects, false);
         configuredColliders += ConfigureGroup(room, "Architecture", ArchitectureObjects, false);
+        configuredColliders += ConfigureCompositeGroup(
+            room,
+            "Structure/Wall_East",
+            EastWallObjects);
+        configuredColliders += ConfigureCompositeGroup(
+            room,
+            "Architecture/Window_01/Frame",
+            WindowFrameObjects);
 
         EditorUtility.SetDirty(xrRoot);
         EditorSceneManager.MarkSceneDirty(scene);
@@ -242,6 +264,49 @@ public static class TesisCollisionSetup
         return count;
     }
 
+    private static int ConfigureCompositeGroup(
+        Transform room,
+        string groupPath,
+        IEnumerable<string> objectNames)
+    {
+        Transform group = room.Find(groupPath);
+        if (group == null)
+            throw new InvalidOperationException(
+                $"No se encontró Room/{groupPath}. Ejecuta primero el Builder de Phase 3A.");
+
+        if (group.GetComponents<Collider>().Length > 0)
+            throw new InvalidOperationException(
+                $"Room/{groupPath} no debe tener un collider que cierre la abertura.");
+
+        int count = 0;
+        foreach (string objectName in objectNames)
+        {
+            Transform target = group.Find(objectName);
+            if (target == null)
+                throw new InvalidOperationException($"No se encontró Room/{groupPath}/{objectName}.");
+
+            Collider[] existingColliders = target.GetComponents<Collider>();
+            if (existingColliders.Length > 1)
+                throw new InvalidOperationException(
+                    $"Room/{groupPath}/{objectName} tiene colliders duplicados; no se modificó.");
+            if (existingColliders.Length == 1 && existingColliders[0] is not BoxCollider)
+                throw new InvalidOperationException(
+                    $"Room/{groupPath}/{objectName} debe utilizar BoxCollider.");
+
+            BoxCollider collider = existingColliders.Length == 1
+                ? (BoxCollider)existingColliders[0]
+                : target.gameObject.AddComponent<BoxCollider>();
+            collider.enabled = true;
+            collider.isTrigger = false;
+            target.gameObject.isStatic = true;
+            EditorUtility.SetDirty(target.gameObject);
+            EditorUtility.SetDirty(collider);
+            count++;
+        }
+
+        return count;
+    }
+
     private static void Validate(
         Scene scene,
         XROrigin xrOrigin,
@@ -295,10 +360,20 @@ public static class TesisCollisionSetup
             errors.Add("DesktopKeyboardLocomotion no tiene las referencias esperadas");
 
         ValidateBoxColliders(room, "Structure",
-            new[] { "Wall_North", "Wall_South", "Wall_East", "Wall_West" }, errors);
+            new[] { "Wall_North", "Wall_South", "Wall_West" }, errors);
         ValidateActiveColliders(room, "Structure", StructureObjects, errors);
         ValidateActiveColliders(room, "Furniture", FurnitureObjects, errors);
         ValidateActiveColliders(room, "Architecture", ArchitectureObjects, errors);
+        ValidateCompositeColliders(
+            room,
+            "Structure/Wall_East",
+            EastWallObjects,
+            errors);
+        ValidateCompositeColliders(
+            room,
+            "Architecture/Window_01/Frame",
+            WindowFrameObjects,
+            errors);
 
         HashSet<int> currentXrComponentIds = CaptureComponentIds(xrRoot);
         if (!originalXrComponentIds.IsSubsetOf(currentXrComponentIds))
@@ -316,8 +391,8 @@ public static class TesisCollisionSetup
             $"DynamicMoveProvider='{moveProvider.name}' desactivado temporalmente; LocomotionMediator='{mediator.name}'=OK; " +
             $"XRBodyTransformer='{bodyTransformer.name}' UseCharacterController=ON; CharacterController=único; " +
             "DesktopKeyboardLocomotion=activo/configurado; " +
-            "paredes BoxCollider=OK; " +
-            "puerta y ventanas collider=OK; Rigidbody XR Origin=ausente.");
+            "paredes y marco de ventana BoxCollider=OK; " +
+            "abertura sin collider raíz=OK; puerta collider=OK; Rigidbody XR Origin=ausente.");
     }
 
     private static void ValidateBoxColliders(
@@ -347,6 +422,34 @@ public static class TesisCollisionSetup
             Collider collider = target != null ? target.GetComponent<Collider>() : null;
             if (collider == null || !collider.enabled || collider.isTrigger)
                 errors.Add($"{groupName}/{objectName} no tiene un collider sólido activo");
+        }
+    }
+
+    private static void ValidateCompositeColliders(
+        Transform room,
+        string groupPath,
+        IEnumerable<string> objectNames,
+        ICollection<string> errors)
+    {
+        Transform group = room.Find(groupPath);
+        if (group == null)
+        {
+            errors.Add($"falta {groupPath}");
+            return;
+        }
+
+        if (group.GetComponents<Collider>().Length > 0)
+            errors.Add($"{groupPath} tiene un collider raíz que cierra la abertura");
+
+        foreach (string objectName in objectNames)
+        {
+            Transform target = group.Find(objectName);
+            BoxCollider collider = target != null ? target.GetComponent<BoxCollider>() : null;
+            if (collider == null || target.GetComponents<Collider>().Length != 1 ||
+                !collider.enabled || collider.isTrigger)
+            {
+                errors.Add($"{groupPath}/{objectName} no tiene un único BoxCollider sólido activo");
+            }
         }
     }
 
