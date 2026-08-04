@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.Events;
 
 [DisallowMultipleComponent]
 public sealed class FirstHallucinationSequence : MonoBehaviour
@@ -59,6 +60,10 @@ public sealed class FirstHallucinationSequence : MonoBehaviour
     [SerializeField]
     private Color alteredLightColor = new Color(0.92f, 0.78f, 0.72f, 1f);
 
+    [Header("Events")]
+    [SerializeField]
+    private UnityEvent onCompleted = new UnityEvent();
+
     [Header("Debug")]
     [SerializeField]
     private bool debugLogs;
@@ -69,10 +74,13 @@ public sealed class FirstHallucinationSequence : MonoBehaviour
     private Coroutine hallucinationCoroutine;
     private bool hallucinationStarted;
     private bool lightingCaptured;
+    private bool completionEventInvoked;
 
     public PhaseState CurrentState { get; private set; } = PhaseState.Exploration;
 
     public bool HasStartedHallucination => hallucinationStarted;
+
+    public UnityEvent OnCompleted => onCompleted;
 
     private void Awake()
     {
@@ -80,6 +88,7 @@ public sealed class FirstHallucinationSequence : MonoBehaviour
         StopAndConfigureAudioSources();
         CaptureInitialLighting();
         CurrentState = PhaseState.Exploration;
+        completionEventInvoked = false;
     }
 
     private void Start()
@@ -219,8 +228,18 @@ public sealed class FirstHallucinationSequence : MonoBehaviour
         ApplyLightingTransition(1f);
 
         CurrentState = PhaseState.Completed;
-        hallucinationCoroutine = null;
         Log("Phase 2 visual flow completed.");
+
+        while (hallucinationAudioSource != null && hallucinationAudioSource.isPlaying)
+            yield return null;
+
+        hallucinationCoroutine = null;
+        if (!completionEventInvoked)
+        {
+            completionEventInvoked = true;
+            OnCompleted.Invoke();
+            Log("Phase 2 completion event invoked.");
+        }
     }
 
     private void StopAndConfigureAudioSources()
