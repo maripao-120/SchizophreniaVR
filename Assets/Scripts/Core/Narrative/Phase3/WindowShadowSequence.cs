@@ -19,6 +19,9 @@ public sealed class WindowShadowSequence : MonoBehaviour
     private LinearShadowMovement shadowMovement;
 
     [SerializeField]
+    private WindowLookDetector lookDetector;
+
+    [SerializeField]
     private AudioSource footstepsAudioSource;
 
     [SerializeField]
@@ -48,10 +51,20 @@ public sealed class WindowShadowSequence : MonoBehaviour
     [SerializeField]
     private bool stopFootstepsWhenMovementEnds = true;
 
+    [SerializeField, Range(0f, 1f)]
+    private float minimumPauseProgress = 0.15f;
+
+    [SerializeField, Range(0f, 1f)]
+    private float maximumPauseProgress = 0.8f;
+
+    [SerializeField, Min(0.01f)]
+    private float lookReactionPauseDuration = 1.5f;
+
     [SerializeField]
     private bool debugLogs;
 
     private Coroutine sequenceCoroutine;
+    private bool lookReactionConsumed;
 
     public SequenceState CurrentState { get; private set; } = SequenceState.Idle;
 
@@ -61,6 +74,8 @@ public sealed class WindowShadowSequence : MonoBehaviour
     {
         shadowView?.ResetView();
         shadowMovement?.ResetPosition();
+        lookDetector?.ResetDetection();
+        lookReactionConsumed = false;
         ConfigureAudioSource(footstepsAudioSource, footstepsClip, footstepsVolume);
         ConfigureAudioSource(guidanceAudioSource, guidanceClip, guidanceVolume);
         CurrentState = SequenceState.Idle;
@@ -72,6 +87,7 @@ public sealed class WindowShadowSequence : MonoBehaviour
             StopCoroutine(sequenceCoroutine);
 
         sequenceCoroutine = null;
+        lookDetector?.StopDetection();
         StopAudio(footstepsAudioSource);
         StopAudio(guidanceAudioSource);
         shadowView?.Hide();
@@ -84,6 +100,9 @@ public sealed class WindowShadowSequence : MonoBehaviour
         shadowDelayAfterGuidance = Mathf.Max(0f, shadowDelayAfterGuidance);
         footstepsVolume = Mathf.Clamp01(footstepsVolume);
         guidanceVolume = Mathf.Clamp01(guidanceVolume);
+        minimumPauseProgress = Mathf.Clamp01(minimumPauseProgress);
+        maximumPauseProgress = Mathf.Clamp01(maximumPauseProgress);
+        lookReactionPauseDuration = Mathf.Max(0.01f, lookReactionPauseDuration);
     }
 
     public void BeginSequence()
@@ -98,6 +117,8 @@ public sealed class WindowShadowSequence : MonoBehaviour
         }
 
         HasActivated = true;
+        lookReactionConsumed = false;
+        lookDetector?.ResetDetection();
         sequenceCoroutine = StartCoroutine(PlaySequence());
         Log("Sequence activated.");
     }
@@ -136,6 +157,7 @@ public sealed class WindowShadowSequence : MonoBehaviour
 
         if (!shadowMovement.PlayMovement())
         {
+            lookDetector?.StopDetection();
             shadowView.Hide();
             StopAudio(footstepsAudioSource);
             CurrentState = SequenceState.Completed;
@@ -143,15 +165,56 @@ public sealed class WindowShadowSequence : MonoBehaviour
             yield break;
         }
 
+        bool detectionStarted = false;
+        bool detectionWindowClosed = false;
         while (shadowMovement.IsMoving)
-            yield return null;
+        {
+            float progress = shadowMovement.NormalizedProgress;
+            if (!lookReactionConsumed && !detectionWindowClosed && lookDetector != null)
+            {
+                if (!detectionStarted && progress >= minimumPauseProgress)
+                {
+                    if (progress <= maximumPauseProgress)
+                        detectionStarted = lookDetector.BeginDetection();
 
+                    if (!detectionStarted)
+                        detectionWindowClosed = true;
+                }
+
+                if (detectionStarted && progress > maximumPauseProgress)
+                {
+                    lookDetector.StopDetection();
+                    detectionWindowClosed = true;
+                }
+            }
+
+            yield return null;
+        }
+
+        lookDetector?.StopDetection();
         shadowView.Hide();
         if (stopFootstepsWhenMovementEnds)
             StopAudio(footstepsAudioSource);
         CurrentState = SequenceState.Completed;
         sequenceCoroutine = null;
         Log("Sequence completed.");
+    }
+
+    public void HandleLookConfirmed()
+    {
+        if (lookReactionConsumed || shadowMovement == null || !shadowMovement.IsMoving)
+            return;
+
+        float progress = shadowMovement.NormalizedProgress;
+        if (progress < minimumPauseProgress || progress > maximumPauseProgress)
+            return;
+
+        if (!shadowMovement.PauseBriefly(lookReactionPauseDuration))
+            return;
+
+        lookReactionConsumed = true;
+        lookDetector?.StopDetection();
+        Log($"Look reaction consumed at progress {progress:F2}.");
     }
 
     private void PlayAudio(AudioSource source, AudioClip clip, float volume, string cueName)

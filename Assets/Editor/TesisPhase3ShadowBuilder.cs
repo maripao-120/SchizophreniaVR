@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using Unity.XR.CoreUtils;
 using UnityEditor;
 using UnityEditor.Events;
 using UnityEditor.SceneManagement;
@@ -18,6 +19,7 @@ public static class TesisPhase3ShadowBuilder
         "Assets/Audio/Phase3/Phase3_WindowGuidance.mp3";
     private const float ExteriorDistance = 0.65f;
     private const float MaximumFunctionalAudioDistance = 2.5f;
+    private const float MaximumFunctionalLookTargetDistance = 0.25f;
     private const float PathMargin = 0.45f;
     private const float FigureHeight = 1.8f;
     private const float FigureDiameter = 0.6f;
@@ -32,15 +34,15 @@ public static class TesisPhase3ShadowBuilder
             SaveSceneAndAssets(scene);
 
             EditorUtility.DisplayDialog(
-                "Tesis VR - Phase 3C",
-                "Window shadow and audio cues configured. Run Validate Shadow next.",
+                "Tesis VR - Phase 3D",
+                "Window shadow look reaction configured. Run Validate Shadow next.",
                 "OK");
         }
         catch (Exception exception)
         {
             Debug.LogException(exception);
             EditorUtility.DisplayDialog(
-                "Tesis VR - Phase 3C Error",
+                "Tesis VR - Phase 3D Error",
                 "Shadow configuration failed. See Console for details.",
                 "OK");
         }
@@ -55,9 +57,16 @@ public static class TesisPhase3ShadowBuilder
         Transform architecture = FindRequiredDirectChild(room, "Architecture");
         Transform window = FindRequiredDirectChild(architecture, "Window_01");
         Transform opening = FindRequiredDirectChild(window, "ViewOpening");
+        Camera mainCamera = FindRequiredMainCamera(scene);
         Transform floor = FindRequiredDirectChild(
             FindRequiredDirectChild(room, "Structure"),
             "Floor");
+
+        Transform lookTarget = GetOrCreateDirectChild(
+            window,
+            "WindowLookTarget",
+            out bool lookTargetCreated);
+        PositionLookTarget(lookTarget, opening, lookTargetCreated);
 
         CalculatePath(
             room,
@@ -138,25 +147,35 @@ public static class TesisPhase3ShadowBuilder
             GetOrAddSingleComponent<LinearShadowMovement>(phaseObject.gameObject, out bool movementCreated);
         WindowShadowSequence sequence =
             GetOrAddSingleComponent<WindowShadowSequence>(phaseObject.gameObject, out bool sequenceCreated);
+        WindowLookDetector lookDetector =
+            GetOrAddSingleComponent<WindowLookDetector>(phaseObject.gameObject, out bool detectorCreated);
 
         ConfigureView(view, capsule.GetComponent<Renderer>());
         ConfigureMovement(movement, figure, start, end, movementCreated);
+        ConfigureLookDetector(
+            lookDetector,
+            mainCamera.transform,
+            lookTarget,
+            detectorCreated);
         ConfigureSequence(
             sequence,
             view,
             movement,
+            lookDetector,
             footstepsSource,
             guidanceSource,
             footstepsClip,
             guidanceClip,
             sequenceCreated);
+        ConnectLookConfirmation(lookDetector, sequence);
         ConnectPhaseTwoCompletion(scene, sequence);
 
         EditorSceneManager.MarkSceneDirty(scene);
         Debug.Log(
-            "TesisPhase3ShadowBuilder: Phase 3C shadow and audio configured. " +
+            "TesisPhase3ShadowBuilder: Phase 3D look reaction configured. " +
             $"Exterior={exteriorDirection}, path={Vector3.Distance(start.position, end.position):F2} m, " +
-            "FootstepsAudio=3D, WindowGuidanceAudio=2D, Phase 2 completion listener=1.");
+            $"camera={GetPath(mainCamera.transform)}, target={GetPath(lookTarget)}, " +
+            "look listener=1, Phase 2 completion listener=1.");
 
         if (footstepsClip == null)
             Debug.LogWarning($"TesisPhase3ShadowBuilder: missing optional audio clip {FootstepsClipPath}.");
@@ -292,6 +311,7 @@ public static class TesisPhase3ShadowBuilder
         WindowShadowSequence sequence,
         WindowShadowView view,
         LinearShadowMovement movement,
+        WindowLookDetector lookDetector,
         AudioSource footstepsSource,
         AudioSource guidanceSource,
         AudioClip footstepsClip,
@@ -301,14 +321,92 @@ public static class TesisPhase3ShadowBuilder
         SerializedObject serializedSequence = new SerializedObject(sequence);
         serializedSequence.FindProperty("shadowView").objectReferenceValue = view;
         serializedSequence.FindProperty("shadowMovement").objectReferenceValue = movement;
+        serializedSequence.FindProperty("lookDetector").objectReferenceValue = lookDetector;
         serializedSequence.FindProperty("footstepsAudioSource").objectReferenceValue = footstepsSource;
         serializedSequence.FindProperty("guidanceAudioSource").objectReferenceValue = guidanceSource;
         serializedSequence.FindProperty("footstepsClip").objectReferenceValue = footstepsClip;
         serializedSequence.FindProperty("guidanceClip").objectReferenceValue = guidanceClip;
         if (created)
             serializedSequence.FindProperty("initialDelay").floatValue = 4f;
+
+        SerializedProperty minimumProgress =
+            serializedSequence.FindProperty("minimumPauseProgress");
+        SerializedProperty maximumProgress =
+            serializedSequence.FindProperty("maximumPauseProgress");
+        SerializedProperty pauseDuration =
+            serializedSequence.FindProperty("lookReactionPauseDuration");
+        if (minimumProgress.floatValue < 0f || minimumProgress.floatValue >= 1f)
+            minimumProgress.floatValue = 0.15f;
+        if (maximumProgress.floatValue <= minimumProgress.floatValue ||
+            maximumProgress.floatValue > 1f)
+        {
+            maximumProgress.floatValue = 0.8f;
+        }
+        if (pauseDuration.floatValue <= 0f)
+            pauseDuration.floatValue = 1.5f;
         serializedSequence.ApplyModifiedProperties();
         EditorUtility.SetDirty(sequence);
+    }
+
+    private static void PositionLookTarget(
+        Transform lookTarget,
+        Transform opening,
+        bool created)
+    {
+        if (created ||
+            Vector3.Distance(lookTarget.position, opening.position) >
+            MaximumFunctionalLookTargetDistance)
+        {
+            SetWorldPosition(lookTarget, opening.position);
+        }
+    }
+
+    private static void ConfigureLookDetector(
+        WindowLookDetector detector,
+        Transform cameraTransform,
+        Transform lookTarget,
+        bool created)
+    {
+        SerializedObject serializedDetector = new SerializedObject(detector);
+        serializedDetector.FindProperty("cameraTransform").objectReferenceValue = cameraTransform;
+        serializedDetector.FindProperty("lookTarget").objectReferenceValue = lookTarget;
+        if (created)
+        {
+            serializedDetector.FindProperty("maximumLookAngle").floatValue = 25f;
+            serializedDetector.FindProperty("requiredLookDuration").floatValue = 0.5f;
+        }
+        serializedDetector.ApplyModifiedProperties();
+        EditorUtility.SetDirty(detector);
+    }
+
+    private static void ConnectLookConfirmation(
+        WindowLookDetector detector,
+        WindowShadowSequence sequence)
+    {
+        if (detector.OnLookConfirmed == null)
+            throw new InvalidOperationException("WindowLookDetector confirmation event is unavailable.");
+
+        int firstMatchingIndex = -1;
+        for (int index = detector.OnLookConfirmed.GetPersistentEventCount() - 1; index >= 0; index--)
+        {
+            bool matches = detector.OnLookConfirmed.GetPersistentTarget(index) == sequence &&
+                           detector.OnLookConfirmed.GetPersistentMethodName(index) ==
+                           nameof(WindowShadowSequence.HandleLookConfirmed);
+            if (!matches)
+                continue;
+
+            if (firstMatchingIndex < 0)
+                firstMatchingIndex = index;
+            else
+                UnityEventTools.RemovePersistentListener(detector.OnLookConfirmed, index);
+        }
+
+        if (firstMatchingIndex < 0)
+            UnityEventTools.AddPersistentListener(
+                detector.OnLookConfirmed,
+                sequence.HandleLookConfirmed);
+
+        EditorUtility.SetDirty(detector);
     }
 
     private static void PositionFootstepsAudio(
@@ -510,6 +608,36 @@ public static class TesisPhase3ShadowBuilder
         if (child == null)
             throw new InvalidOperationException($"Missing {GetPath(parent)}/{name}.");
         return child;
+    }
+
+    private static Camera FindRequiredMainCamera(Scene scene)
+    {
+        XROrigin[] origins = UnityEngine.Object.FindObjectsByType<XROrigin>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None)
+            .Where(origin => origin.gameObject.scene == scene)
+            .ToArray();
+        if (origins.Length != 1)
+            throw new InvalidOperationException(
+                $"Expected one XROrigin in SampleScene; found {origins.Length}.");
+
+        Camera xrCamera = origins[0].Camera;
+        if (xrCamera == null || xrCamera.gameObject.scene != scene)
+            throw new InvalidOperationException("XROrigin has no scene Camera assigned.");
+
+        Camera[] activeCameras = UnityEngine.Object.FindObjectsByType<Camera>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None)
+            .Where(camera => camera.gameObject.scene == scene &&
+                             camera.enabled && camera.gameObject.activeInHierarchy)
+            .ToArray();
+        if (activeCameras.Length != 1 || activeCameras[0] != xrCamera)
+            throw new InvalidOperationException(
+                "SampleScene must have exactly one active Camera and it must belong to XROrigin.");
+        if (!xrCamera.CompareTag("MainCamera"))
+            throw new InvalidOperationException("The XROrigin Camera must use the MainCamera tag.");
+
+        return xrCamera;
     }
 
     private static Transform FindRequiredRoot(Scene scene, string name)

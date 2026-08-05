@@ -19,6 +19,7 @@ public static class TesisPhase3ShadowValidator
     private const string GuidanceClipPath =
         "Assets/Audio/Phase3/Phase3_WindowGuidance.mp3";
     private const float MaximumFunctionalAudioDistance = 2.5f;
+    private const float MaximumFunctionalLookTargetDistance = 0.25f;
 
     [MenuItem("Tools/Tesis VR/Phase 3/Validate Shadow")]
     private static void ValidateFromMenu()
@@ -27,7 +28,7 @@ public static class TesisPhase3ShadowValidator
         {
             ValidationReport report = Validate();
             EditorUtility.DisplayDialog(
-                "Tesis VR - Phase 3C Audio Validation",
+                "Tesis VR - Phase 3D Look Detection Validation",
                 report.ErrorCount == 0
                     ? $"Validation completed with {report.WarningCount} warning(s)."
                     : $"Validation found {report.ErrorCount} error(s). See Console.",
@@ -37,7 +38,7 @@ public static class TesisPhase3ShadowValidator
         {
             Debug.LogException(exception);
             EditorUtility.DisplayDialog(
-                "Tesis VR - Phase 3C Audio Validation Error",
+                "Tesis VR - Phase 3D Look Detection Validation Error",
                 exception.Message,
                 "OK");
         }
@@ -62,7 +63,9 @@ public static class TesisPhase3ShadowValidator
         Transform frame = FindUniqueDirectChild(window, "Frame", report);
         Transform glass = FindUniqueDirectChild(window, "Glass", report);
         Transform opening = FindUniqueDirectChild(window, "ViewOpening", report);
+        Transform lookTarget = FindUniqueDirectChild(window, "WindowLookTarget", report);
         Transform wall = FindUniqueDirectChild(structure, "Wall_East", report);
+        Camera mainCamera = ValidateMainCamera(scene, report);
 
         Transform environment = FindUniqueDirectChild(room, "Phase3Environment", report);
         Transform path = FindUniqueDirectChild(environment, "ShadowPath", report);
@@ -81,6 +84,11 @@ public static class TesisPhase3ShadowValidator
             phaseObject,
             "WindowGuidanceAudio",
             report);
+        WindowLookDetector lookDetector = ValidateLookDetector(
+            mainCamera,
+            lookTarget,
+            phaseObject,
+            report);
 
         AudioClip footstepsClip = ValidateAudioAsset(
             FootstepsClipPath,
@@ -94,6 +102,7 @@ public static class TesisPhase3ShadowValidator
             report);
 
         ValidatePhase3A(window, frame, glass, opening, wall, report);
+        ValidateLookTarget(window, opening, lookTarget, report);
         ValidateFigure(room, floor, window, capsule, figure, start, end, report);
         LinearShadowMovement movement = ValidateMovement(
             room,
@@ -122,16 +131,17 @@ public static class TesisPhase3ShadowValidator
         WindowShadowSequence sequence = ValidateSequence(
             view,
             movement,
+            lookDetector,
             footstepsSource,
             guidanceSource,
             footstepsClip,
             guidanceClip,
             phaseObject,
             report);
+        ValidateLookConnection(lookDetector, sequence, report);
         ValidatePhaseTwoConnection(scene, sequence, report);
         ValidatePreviousPhases(scene, report);
         ValidateAudioListeners(scene, report);
-        ValidateNoLookDetection(scene, report);
         ValidateNoMissingScripts(scene, report);
         ValidateGlobalNameCounts(scene, report);
 
@@ -192,6 +202,131 @@ public static class TesisPhase3ShadowValidator
                 "Window opening remains unblocked",
                 "A solid collider covers the center of ViewOpening.");
         }
+    }
+
+    private static void ValidateLookTarget(
+        Transform window,
+        Transform opening,
+        Transform lookTarget,
+        ValidationReport report)
+    {
+        if (lookTarget == null)
+            return;
+
+        report.Check(
+            lookTarget.parent == window,
+            "WindowLookTarget is a direct child of Window_01",
+            "WindowLookTarget must remain under Window_01.");
+        if (opening != null)
+        {
+            report.Check(
+                Vector3.Distance(lookTarget.position, opening.position) <=
+                MaximumFunctionalLookTargetDistance,
+                "WindowLookTarget is centered near ViewOpening",
+                "WindowLookTarget is too far from ViewOpening.");
+        }
+        report.Check(
+            lookTarget.GetComponents<Renderer>().Length == 0 &&
+            lookTarget.GetComponents<MeshFilter>().Length == 0,
+            "WindowLookTarget is an empty visual target",
+            "WindowLookTarget must not have a Renderer or MeshFilter.");
+        report.Check(
+            lookTarget.GetComponents<Rigidbody>().Length == 0,
+            "WindowLookTarget has no Rigidbody",
+            "WindowLookTarget must not have a Rigidbody.");
+        report.Check(
+            lookTarget.GetComponents<Collider>()
+                .All(collider => !collider.enabled || collider.isTrigger),
+            "WindowLookTarget has no active solid collider",
+            "WindowLookTarget must not have an active solid collider.");
+    }
+
+    private static WindowLookDetector ValidateLookDetector(
+        Camera mainCamera,
+        Transform lookTarget,
+        Transform phaseObject,
+        ValidationReport report)
+    {
+        if (phaseObject == null)
+            return null;
+
+        WindowLookDetector[] detectors = phaseObject.GetComponents<WindowLookDetector>();
+        int sceneDetectorCount =
+            FindSceneComponents<WindowLookDetector>(phaseObject.gameObject.scene).Length;
+        report.Check(
+            sceneDetectorCount == 1,
+            "SampleScene has exactly one WindowLookDetector",
+            $"Expected one WindowLookDetector in SampleScene; found {sceneDetectorCount}.");
+        report.Check(
+            detectors.Length == 1,
+            "Single WindowLookDetector",
+            $"Phase3_WindowShadow needs one WindowLookDetector; found {detectors.Length}.");
+        if (detectors.Length != 1)
+            return null;
+
+        WindowLookDetector detector = detectors[0];
+        SerializedObject serializedDetector = new SerializedObject(detector);
+        Transform cameraReference =
+            serializedDetector.FindProperty("cameraTransform").objectReferenceValue as Transform;
+        Transform targetReference =
+            serializedDetector.FindProperty("lookTarget").objectReferenceValue as Transform;
+        float maximumAngle = serializedDetector.FindProperty("maximumLookAngle").floatValue;
+        float requiredDuration =
+            serializedDetector.FindProperty("requiredLookDuration").floatValue;
+
+        report.Check(
+            mainCamera != null && cameraReference == mainCamera.transform,
+            "WindowLookDetector references XR Main Camera",
+            "WindowLookDetector Camera Transform must reference the XROrigin Main Camera.");
+        report.Check(
+            lookTarget != null && targetReference == lookTarget,
+            "WindowLookDetector references WindowLookTarget",
+            "WindowLookDetector has the wrong or missing Look Target.");
+        report.Check(
+            maximumAngle > 0f && maximumAngle <= 180f,
+            $"Maximum look angle is valid ({maximumAngle:F1} degrees)",
+            "maximumLookAngle must be greater than 0 and no more than 180 degrees.");
+        report.Warn(
+            maximumAngle >= 20f && maximumAngle <= 30f,
+            "Maximum look angle is in the recommended 20-30 degree range",
+            $"maximumLookAngle is {maximumAngle:F1}; recommended range is 20-30 degrees.");
+        report.Check(
+            requiredDuration >= 0f,
+            $"Required look duration is valid ({requiredDuration:F2} s)",
+            "requiredLookDuration must not be negative.");
+        report.Warn(
+            requiredDuration >= 0.4f && requiredDuration <= 0.7f,
+            "Required look duration is in the recommended 0.4-0.7 s range",
+            $"requiredLookDuration is {requiredDuration:F2} s; recommended range is 0.4-0.7 s.");
+        report.Ok("WindowLookDetector uses camera orientation without eye-tracking APIs");
+        return detector;
+    }
+
+    private static void ValidateLookConnection(
+        WindowLookDetector detector,
+        WindowShadowSequence sequence,
+        ValidationReport report)
+    {
+        if (detector == null || sequence == null || detector.OnLookConfirmed == null)
+        {
+            report.Check(false, string.Empty, "Window look confirmation event is unavailable.");
+            return;
+        }
+
+        int matches = 0;
+        for (int index = 0; index < detector.OnLookConfirmed.GetPersistentEventCount(); index++)
+        {
+            if (detector.OnLookConfirmed.GetPersistentTarget(index) == sequence &&
+                detector.OnLookConfirmed.GetPersistentMethodName(index) ==
+                nameof(WindowShadowSequence.HandleLookConfirmed))
+            {
+                matches++;
+            }
+        }
+        report.Check(
+            matches == 1,
+            "Window look confirmation connects once to WindowShadowSequence",
+            $"Expected one HandleLookConfirmed listener; found {matches}.");
     }
 
     private static void ValidateFigure(
@@ -336,6 +471,25 @@ public static class TesisPhase3ShadowValidator
             "LinearShadowMovement references are correct",
             "LinearShadowMovement has incorrect moving/start/end references.");
         report.Check(duration > 0f, $"Movement duration is positive ({duration:F2} s)", "Movement duration must be positive.");
+        report.Check(
+            typeof(LinearShadowMovement).GetProperty(nameof(LinearShadowMovement.NormalizedProgress)) != null,
+            "LinearShadowMovement exposes normalized progress",
+            "LinearShadowMovement must expose NormalizedProgress.");
+        report.Check(
+            typeof(LinearShadowMovement).GetMethod(
+                nameof(LinearShadowMovement.PauseBriefly),
+                new[] { typeof(float) }) != null,
+            "LinearShadowMovement exposes one temporary pause API",
+            "LinearShadowMovement must expose PauseBriefly(float).");
+        report.Check(
+            phaseObject.GetComponents<Rigidbody>().Length == 0,
+            "Phase3_WindowShadow has no Rigidbody",
+            "LinearShadowMovement controller must not use a Rigidbody.");
+        report.Check(
+            phaseObject.GetComponents<Component>()
+                .All(component => component == null || component.GetType().Name != "NavMeshAgent"),
+            "Phase3_WindowShadow has no NavMeshAgent",
+            "LinearShadowMovement controller must not use NavMesh.");
 
         if (opening != null && start != null && end != null)
         {
@@ -524,6 +678,7 @@ public static class TesisPhase3ShadowValidator
     private static WindowShadowSequence ValidateSequence(
         WindowShadowView expectedView,
         LinearShadowMovement expectedMovement,
+        WindowLookDetector expectedLookDetector,
         AudioSource expectedFootstepsSource,
         AudioSource expectedGuidanceSource,
         AudioClip expectedFootstepsClip,
@@ -549,6 +704,11 @@ public static class TesisPhase3ShadowValidator
             expectedView != null && expectedMovement != null,
             "WindowShadowSequence references are correct",
             "WindowShadowSequence has incorrect view or movement references.");
+        report.Check(
+            serializedSequence.FindProperty("lookDetector").objectReferenceValue ==
+                expectedLookDetector && expectedLookDetector != null,
+            "WindowShadowSequence references WindowLookDetector",
+            "WindowShadowSequence has the wrong or missing WindowLookDetector reference.");
         report.Check(
             serializedSequence.FindProperty("footstepsAudioSource").objectReferenceValue ==
                 expectedFootstepsSource &&
@@ -595,6 +755,27 @@ public static class TesisPhase3ShadowValidator
             serializedSequence.FindProperty("stopFootstepsWhenMovementEnds").boolValue,
             "Footsteps stop when movement ends",
             "stopFootstepsWhenMovementEnds must be enabled.");
+        float minimumPauseProgress =
+            serializedSequence.FindProperty("minimumPauseProgress").floatValue;
+        float maximumPauseProgress =
+            serializedSequence.FindProperty("maximumPauseProgress").floatValue;
+        float pauseDuration =
+            serializedSequence.FindProperty("lookReactionPauseDuration").floatValue;
+        report.Check(
+            minimumPauseProgress >= 0f && minimumPauseProgress <= 1f &&
+            maximumPauseProgress >= 0f && maximumPauseProgress <= 1f,
+            "Look reaction progress bounds are within 0-1",
+            "minimumPauseProgress and maximumPauseProgress must be within 0-1.");
+        report.Check(
+            minimumPauseProgress < maximumPauseProgress,
+            $"Look reaction window is valid ({minimumPauseProgress:F2}-{maximumPauseProgress:F2})",
+            "minimumPauseProgress must be less than maximumPauseProgress.");
+        report.Check(
+            pauseDuration > 0f,
+            $"Look reaction pause duration is positive ({pauseDuration:F2} s)",
+            "lookReactionPauseDuration must be positive.");
+        report.Ok("WindowShadowSequence guards the look reaction to one pause");
+        report.Ok("WindowShadowSequence stops look detection when movement ends");
         report.Ok("WindowShadowSequence has a one-way activation guard");
         report.Check(
             phaseObject.GetComponents<AudioSource>().Length == 0,
@@ -678,6 +859,37 @@ public static class TesisPhase3ShadowValidator
         report.Check(grabCubeCount == 0, "GrabCube was not reintroduced", $"Found {grabCubeCount} GrabCube object(s).");
     }
 
+    private static Camera ValidateMainCamera(Scene scene, ValidationReport report)
+    {
+        XROrigin[] origins = FindSceneComponents<XROrigin>(scene);
+        report.Check(
+            origins.Length == 1,
+            "Single XROrigin provides the head camera",
+            $"Expected one XROrigin; found {origins.Length}.");
+
+        Camera xrCamera = origins.Length == 1 ? origins[0].Camera : null;
+        report.Check(
+            xrCamera != null && xrCamera.gameObject.scene == scene,
+            "XROrigin has a scene Camera assigned",
+            "XROrigin Camera is missing or belongs to another scene.");
+        if (xrCamera != null)
+        {
+            report.Check(
+                xrCamera.name == "Main Camera" && xrCamera.CompareTag("MainCamera"),
+                "XROrigin Camera is the tagged Main Camera",
+                "The XROrigin Camera must be named Main Camera and use the MainCamera tag.");
+        }
+
+        Camera[] activeCameras = FindSceneComponents<Camera>(scene)
+            .Where(camera => camera.enabled && camera.gameObject.activeInHierarchy)
+            .ToArray();
+        report.Check(
+            activeCameras.Length == 1 && activeCameras[0] == xrCamera,
+            "SampleScene has one active camera",
+            $"Expected only the XROrigin Main Camera to be active; found {activeCameras.Length} active camera(s).");
+        return xrCamera;
+    }
+
     private static void ValidateAudioListeners(Scene scene, ValidationReport report)
     {
         AudioListener[] listeners = FindSceneComponents<AudioListener>(scene);
@@ -685,17 +897,6 @@ public static class TesisPhase3ShadowValidator
             listeners.Length == 1,
             "Scene retains exactly one AudioListener",
             $"Expected one AudioListener; found {listeners.Length}.");
-    }
-
-    private static void ValidateNoLookDetection(Scene scene, ValidationReport report)
-    {
-        int detectorCount = FindSceneTransforms(scene)
-            .SelectMany(transform => transform.GetComponents<Component>())
-            .Count(component => component != null && component.GetType().Name == "WindowLookDetector");
-        report.Check(
-            detectorCount == 0,
-            "No WindowLookDetector or gaze reaction was added",
-            $"Found {detectorCount} WindowLookDetector component(s); gaze detection belongs to a later subphase.");
     }
 
     private static void ValidateNoMissingScripts(Scene scene, ValidationReport report)
@@ -717,7 +918,8 @@ public static class TesisPhase3ShadowValidator
             "ShadowCapsule",
             "Phase3_WindowShadow",
             "WindowFootstepsAudio",
-            "WindowGuidanceAudio"
+            "WindowGuidanceAudio",
+            "WindowLookTarget"
         };
         foreach (string name in names)
         {
@@ -854,7 +1056,7 @@ public static class TesisPhase3ShadowValidator
         public string BuildSummary()
         {
             StringBuilder builder = new StringBuilder();
-            builder.AppendLine("Phase 3C Audio Validation");
+            builder.AppendLine("Phase 3D Look Detection Validation");
             builder.AppendLine();
             foreach (string line in lines)
                 builder.AppendLine(line);

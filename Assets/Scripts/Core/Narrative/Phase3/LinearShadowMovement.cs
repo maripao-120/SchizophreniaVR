@@ -24,12 +24,19 @@ public sealed class LinearShadowMovement : MonoBehaviour
     private bool debugLogs;
 
     private Coroutine movementCoroutine;
+    private float pauseTimeRemaining;
 
     public event Action MovementCompleted;
 
     public bool IsMoving { get; private set; }
 
     public bool HasCompleted { get; private set; }
+
+    public bool IsPaused { get; private set; }
+
+    public bool HasPaused { get; private set; }
+
+    public float NormalizedProgress { get; private set; }
 
     private void OnDisable()
     {
@@ -38,6 +45,8 @@ public sealed class LinearShadowMovement : MonoBehaviour
 
         movementCoroutine = null;
         IsMoving = false;
+        IsPaused = false;
+        pauseTimeRemaining = 0f;
     }
 
     private void OnValidate()
@@ -53,6 +62,10 @@ public sealed class LinearShadowMovement : MonoBehaviour
         movementCoroutine = null;
         IsMoving = false;
         HasCompleted = false;
+        IsPaused = false;
+        HasPaused = false;
+        NormalizedProgress = 0f;
+        pauseTimeRemaining = 0f;
 
         if (movingTransform != null && startPoint != null)
             movingTransform.position = startPoint.position;
@@ -70,7 +83,26 @@ public sealed class LinearShadowMovement : MonoBehaviour
         }
 
         HasCompleted = false;
+        IsPaused = false;
+        HasPaused = false;
+        NormalizedProgress = 0f;
+        pauseTimeRemaining = 0f;
         movementCoroutine = StartCoroutine(MoveBetweenPoints());
+        return true;
+    }
+
+    public bool PauseBriefly(float duration)
+    {
+        if (!IsMoving || HasPaused || duration <= 0f)
+            return false;
+
+        HasPaused = true;
+        IsPaused = true;
+        pauseTimeRemaining = duration;
+
+        if (debugLogs)
+            Debug.Log($"LinearShadowMovement: paused for {duration:F2} s.", this);
+
         return true;
     }
 
@@ -85,17 +117,30 @@ public sealed class LinearShadowMovement : MonoBehaviour
         float duration = Mathf.Max(0.01f, movementDuration);
         while (elapsed < duration)
         {
+            if (pauseTimeRemaining > 0f)
+            {
+                pauseTimeRemaining = Mathf.Max(0f, pauseTimeRemaining - Time.deltaTime);
+                IsPaused = pauseTimeRemaining > 0f;
+                yield return null;
+                continue;
+            }
+
+            IsPaused = false;
             elapsed += Time.deltaTime;
             float normalizedTime = Mathf.Clamp01(elapsed / duration);
             float progress = movementCurve != null
                 ? movementCurve.Evaluate(normalizedTime)
                 : normalizedTime;
+            NormalizedProgress = Mathf.Clamp01(progress);
             movingTransform.position = Vector3.LerpUnclamped(startPosition, endPosition, progress);
             yield return null;
         }
 
         movingTransform.position = endPosition;
+        NormalizedProgress = 1f;
         IsMoving = false;
+        IsPaused = false;
+        pauseTimeRemaining = 0f;
         HasCompleted = true;
         movementCoroutine = null;
         MovementCompleted?.Invoke();
