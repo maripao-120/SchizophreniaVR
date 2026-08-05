@@ -18,8 +18,35 @@ public sealed class WindowShadowSequence : MonoBehaviour
     [SerializeField]
     private LinearShadowMovement shadowMovement;
 
+    [SerializeField]
+    private AudioSource footstepsAudioSource;
+
+    [SerializeField]
+    private AudioSource guidanceAudioSource;
+
+    [SerializeField]
+    private AudioClip footstepsClip;
+
+    [SerializeField]
+    private AudioClip guidanceClip;
+
     [SerializeField, Min(0f)]
     private float initialDelay = 4f;
+
+    [SerializeField, Min(0f)]
+    private float guidanceDelayAfterFootsteps = 0.8f;
+
+    [SerializeField, Min(0f)]
+    private float shadowDelayAfterGuidance = 1.5f;
+
+    [SerializeField, Range(0f, 1f)]
+    private float footstepsVolume = 0.8f;
+
+    [SerializeField, Range(0f, 1f)]
+    private float guidanceVolume = 1f;
+
+    [SerializeField]
+    private bool stopFootstepsWhenMovementEnds = true;
 
     [SerializeField]
     private bool debugLogs;
@@ -34,6 +61,8 @@ public sealed class WindowShadowSequence : MonoBehaviour
     {
         shadowView?.ResetView();
         shadowMovement?.ResetPosition();
+        ConfigureAudioSource(footstepsAudioSource, footstepsClip, footstepsVolume);
+        ConfigureAudioSource(guidanceAudioSource, guidanceClip, guidanceVolume);
         CurrentState = SequenceState.Idle;
     }
 
@@ -43,12 +72,18 @@ public sealed class WindowShadowSequence : MonoBehaviour
             StopCoroutine(sequenceCoroutine);
 
         sequenceCoroutine = null;
+        StopAudio(footstepsAudioSource);
+        StopAudio(guidanceAudioSource);
         shadowView?.Hide();
     }
 
     private void OnValidate()
     {
         initialDelay = Mathf.Max(0f, initialDelay);
+        guidanceDelayAfterFootsteps = Mathf.Max(0f, guidanceDelayAfterFootsteps);
+        shadowDelayAfterGuidance = Mathf.Max(0f, shadowDelayAfterGuidance);
+        footstepsVolume = Mathf.Clamp01(footstepsVolume);
+        guidanceVolume = Mathf.Clamp01(guidanceVolume);
     }
 
     public void BeginSequence()
@@ -85,6 +120,16 @@ public sealed class WindowShadowSequence : MonoBehaviour
         if (initialDelay > 0f)
             yield return new WaitForSeconds(initialDelay);
 
+        PlayAudio(footstepsAudioSource, footstepsClip, footstepsVolume, "footsteps");
+
+        if (guidanceDelayAfterFootsteps > 0f)
+            yield return new WaitForSeconds(guidanceDelayAfterFootsteps);
+
+        PlayAudio(guidanceAudioSource, guidanceClip, guidanceVolume, "window guidance");
+
+        if (shadowDelayAfterGuidance > 0f)
+            yield return new WaitForSeconds(shadowDelayAfterGuidance);
+
         shadowMovement.ResetPosition();
         shadowView.Show();
         CurrentState = SequenceState.Moving;
@@ -92,6 +137,7 @@ public sealed class WindowShadowSequence : MonoBehaviour
         if (!shadowMovement.PlayMovement())
         {
             shadowView.Hide();
+            StopAudio(footstepsAudioSource);
             CurrentState = SequenceState.Completed;
             sequenceCoroutine = null;
             yield break;
@@ -101,9 +147,43 @@ public sealed class WindowShadowSequence : MonoBehaviour
             yield return null;
 
         shadowView.Hide();
+        if (stopFootstepsWhenMovementEnds)
+            StopAudio(footstepsAudioSource);
         CurrentState = SequenceState.Completed;
         sequenceCoroutine = null;
         Log("Sequence completed.");
+    }
+
+    private void PlayAudio(AudioSource source, AudioClip clip, float volume, string cueName)
+    {
+        if (source == null || clip == null)
+        {
+            Log($"Cannot play {cueName}; its AudioSource or AudioClip is missing. Visual flow continues.");
+            return;
+        }
+
+        source.clip = clip;
+        source.volume = volume;
+        source.Play();
+        Log($"{cueName} started.");
+    }
+
+    private static void ConfigureAudioSource(AudioSource source, AudioClip clip, float volume)
+    {
+        if (source == null)
+            return;
+
+        source.Stop();
+        source.playOnAwake = false;
+        source.loop = false;
+        source.clip = clip;
+        source.volume = volume;
+    }
+
+    private static void StopAudio(AudioSource source)
+    {
+        if (source != null && source.isPlaying)
+            source.Stop();
     }
 
     private void Log(string message)

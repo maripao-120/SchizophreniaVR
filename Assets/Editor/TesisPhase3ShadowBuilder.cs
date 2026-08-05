@@ -12,7 +12,12 @@ public static class TesisPhase3ShadowBuilder
     private const string ScenePath = "Assets/Scenes/SampleScene.unity";
     private const string ShadowMaterialPath =
         "Assets/Generated/Phase3/Materials/MAT_Phase3_Shadow.mat";
+    private const string FootstepsClipPath =
+        "Assets/Audio/Phase3/Phase3_ShadowFootsteps.mp3";
+    private const string GuidanceClipPath =
+        "Assets/Audio/Phase3/Phase3_WindowGuidance.mp3";
     private const float ExteriorDistance = 0.65f;
+    private const float MaximumFunctionalAudioDistance = 2.5f;
     private const float PathMargin = 0.45f;
     private const float FigureHeight = 1.8f;
     private const float FigureDiameter = 0.6f;
@@ -27,15 +32,15 @@ public static class TesisPhase3ShadowBuilder
             SaveSceneAndAssets(scene);
 
             EditorUtility.DisplayDialog(
-                "Tesis VR - Phase 3B",
-                "Provisional window shadow configured. Run Validate Shadow next.",
+                "Tesis VR - Phase 3C",
+                "Window shadow and audio cues configured. Run Validate Shadow next.",
                 "OK");
         }
         catch (Exception exception)
         {
             Debug.LogException(exception);
             EditorUtility.DisplayDialog(
-                "Tesis VR - Phase 3B Error",
+                "Tesis VR - Phase 3C Error",
                 "Shadow configuration failed. See Console for details.",
                 "OK");
         }
@@ -93,6 +98,21 @@ public static class TesisPhase3ShadowBuilder
             SetLocalTransform(capsule, Vector3.zero, new Vector3(FigureDiameter, FigureHeight * 0.5f, FigureDiameter));
         ConfigureCapsule(capsule, shadowMaterial, capsuleCreated);
 
+        AudioClip footstepsClip = AssetDatabase.LoadAssetAtPath<AudioClip>(FootstepsClipPath);
+        Transform footstepsObject = GetOrCreateDirectChild(
+            environment,
+            "WindowFootstepsAudio",
+            out bool footstepsObjectCreated);
+        PositionFootstepsAudio(
+            footstepsObject,
+            opening,
+            exteriorDirection,
+            footstepsObjectCreated);
+        AudioSource footstepsSource = GetOrAddSingleComponent<AudioSource>(
+            footstepsObject.gameObject,
+            out bool footstepsSourceCreated);
+        ConfigureFootstepsAudio(footstepsSource, footstepsClip, footstepsSourceCreated);
+
         Transform experience = FindRequiredRoot(scene, "Experience");
         Transform phaseObject = GetOrCreateDirectChild(
             experience,
@@ -100,6 +120,18 @@ public static class TesisPhase3ShadowBuilder
             out bool phaseObjectCreated);
         if (phaseObjectCreated)
             SetLocalIdentity(phaseObject);
+
+        AudioClip guidanceClip = AssetDatabase.LoadAssetAtPath<AudioClip>(GuidanceClipPath);
+        Transform guidanceObject = GetOrCreateDirectChild(
+            phaseObject,
+            "WindowGuidanceAudio",
+            out bool guidanceObjectCreated);
+        if (guidanceObjectCreated)
+            SetLocalIdentity(guidanceObject);
+        AudioSource guidanceSource = GetOrAddSingleComponent<AudioSource>(
+            guidanceObject.gameObject,
+            out bool guidanceSourceCreated);
+        ConfigureGuidanceAudio(guidanceSource, guidanceClip, guidanceSourceCreated);
 
         WindowShadowView view = GetOrAddSingleComponent<WindowShadowView>(phaseObject.gameObject, out _);
         LinearShadowMovement movement =
@@ -109,14 +141,27 @@ public static class TesisPhase3ShadowBuilder
 
         ConfigureView(view, capsule.GetComponent<Renderer>());
         ConfigureMovement(movement, figure, start, end, movementCreated);
-        ConfigureSequence(sequence, view, movement, sequenceCreated);
+        ConfigureSequence(
+            sequence,
+            view,
+            movement,
+            footstepsSource,
+            guidanceSource,
+            footstepsClip,
+            guidanceClip,
+            sequenceCreated);
         ConnectPhaseTwoCompletion(scene, sequence);
 
         EditorSceneManager.MarkSceneDirty(scene);
         Debug.Log(
-            "TesisPhase3ShadowBuilder: Phase3Environment and Phase3_WindowShadow configured. " +
+            "TesisPhase3ShadowBuilder: Phase 3C shadow and audio configured. " +
             $"Exterior={exteriorDirection}, path={Vector3.Distance(start.position, end.position):F2} m, " +
-            "duration preserved/default 8 s, Phase 2 completion listener=1.");
+            "FootstepsAudio=3D, WindowGuidanceAudio=2D, Phase 2 completion listener=1.");
+
+        if (footstepsClip == null)
+            Debug.LogWarning($"TesisPhase3ShadowBuilder: missing optional audio clip {FootstepsClipPath}.");
+        if (guidanceClip == null)
+            Debug.LogWarning($"TesisPhase3ShadowBuilder: missing optional audio clip {GuidanceClipPath}.");
     }
 
     private static void CalculatePath(
@@ -247,15 +292,79 @@ public static class TesisPhase3ShadowBuilder
         WindowShadowSequence sequence,
         WindowShadowView view,
         LinearShadowMovement movement,
+        AudioSource footstepsSource,
+        AudioSource guidanceSource,
+        AudioClip footstepsClip,
+        AudioClip guidanceClip,
         bool created)
     {
         SerializedObject serializedSequence = new SerializedObject(sequence);
         serializedSequence.FindProperty("shadowView").objectReferenceValue = view;
         serializedSequence.FindProperty("shadowMovement").objectReferenceValue = movement;
+        serializedSequence.FindProperty("footstepsAudioSource").objectReferenceValue = footstepsSource;
+        serializedSequence.FindProperty("guidanceAudioSource").objectReferenceValue = guidanceSource;
+        serializedSequence.FindProperty("footstepsClip").objectReferenceValue = footstepsClip;
+        serializedSequence.FindProperty("guidanceClip").objectReferenceValue = guidanceClip;
         if (created)
             serializedSequence.FindProperty("initialDelay").floatValue = 4f;
         serializedSequence.ApplyModifiedProperties();
         EditorUtility.SetDirty(sequence);
+    }
+
+    private static void PositionFootstepsAudio(
+        Transform audioTransform,
+        Transform opening,
+        Vector3 exteriorDirection,
+        bool created)
+    {
+        Vector3 targetPosition = opening.position + (exteriorDirection * ExteriorDistance);
+        bool isOutsideOrOnPlane =
+            Vector3.Dot(audioTransform.position - opening.position, exteriorDirection) >= -0.05f;
+        bool isNearOpening =
+            Vector3.Distance(audioTransform.position, opening.position) <= MaximumFunctionalAudioDistance;
+        if (created || !isOutsideOrOnPlane || !isNearOpening)
+            SetWorldPosition(audioTransform, targetPosition);
+    }
+
+    private static void ConfigureFootstepsAudio(
+        AudioSource source,
+        AudioClip clip,
+        bool created)
+    {
+        Undo.RecordObject(source, "Configure Phase 3 footsteps audio");
+        source.playOnAwake = false;
+        source.loop = false;
+        source.spatialBlend = 1f;
+        source.dopplerLevel = 0f;
+        source.rolloffMode = AudioRolloffMode.Logarithmic;
+        source.clip = clip;
+        if (created)
+        {
+            source.volume = 0.8f;
+            source.minDistance = 1f;
+            source.maxDistance = 12f;
+        }
+        else if (source.minDistance <= 0f || source.maxDistance <= source.minDistance)
+        {
+            source.minDistance = 1f;
+            source.maxDistance = 12f;
+        }
+        EditorUtility.SetDirty(source);
+    }
+
+    private static void ConfigureGuidanceAudio(
+        AudioSource source,
+        AudioClip clip,
+        bool created)
+    {
+        Undo.RecordObject(source, "Configure Phase 3 guidance audio");
+        source.playOnAwake = false;
+        source.loop = false;
+        source.spatialBlend = 0f;
+        source.clip = clip;
+        if (created)
+            source.volume = 1f;
+        EditorUtility.SetDirty(source);
     }
 
     private static void ConnectPhaseTwoCompletion(Scene scene, WindowShadowSequence shadowSequence)

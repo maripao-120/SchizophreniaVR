@@ -14,6 +14,11 @@ public static class TesisPhase3ShadowValidator
     private const string ScenePath = "Assets/Scenes/SampleScene.unity";
     private const string ShadowMaterialPath =
         "Assets/Generated/Phase3/Materials/MAT_Phase3_Shadow.mat";
+    private const string FootstepsClipPath =
+        "Assets/Audio/Phase3/Phase3_ShadowFootsteps.mp3";
+    private const string GuidanceClipPath =
+        "Assets/Audio/Phase3/Phase3_WindowGuidance.mp3";
+    private const float MaximumFunctionalAudioDistance = 2.5f;
 
     [MenuItem("Tools/Tesis VR/Phase 3/Validate Shadow")]
     private static void ValidateFromMenu()
@@ -22,7 +27,7 @@ public static class TesisPhase3ShadowValidator
         {
             ValidationReport report = Validate();
             EditorUtility.DisplayDialog(
-                "Tesis VR - Phase 3B Validation",
+                "Tesis VR - Phase 3C Audio Validation",
                 report.ErrorCount == 0
                     ? $"Validation completed with {report.WarningCount} warning(s)."
                     : $"Validation found {report.ErrorCount} error(s). See Console.",
@@ -32,7 +37,7 @@ public static class TesisPhase3ShadowValidator
         {
             Debug.LogException(exception);
             EditorUtility.DisplayDialog(
-                "Tesis VR - Phase 3B Validation Error",
+                "Tesis VR - Phase 3C Audio Validation Error",
                 exception.Message,
                 "OK");
         }
@@ -65,9 +70,28 @@ public static class TesisPhase3ShadowValidator
         Transform end = FindUniqueDirectChild(path, "ShadowEnd", report);
         Transform figure = FindUniqueDirectChild(environment, "ShadowFigure", report);
         Transform capsule = FindUniqueDirectChild(figure, "ShadowCapsule", report);
+        Transform footstepsObject = FindUniqueDirectChild(
+            environment,
+            "WindowFootstepsAudio",
+            report);
 
         Transform experience = FindUniqueRoot(scene, "Experience", report);
         Transform phaseObject = FindUniqueDirectChild(experience, "Phase3_WindowShadow", report);
+        Transform guidanceObject = FindUniqueDirectChild(
+            phaseObject,
+            "WindowGuidanceAudio",
+            report);
+
+        AudioClip footstepsClip = ValidateAudioAsset(
+            FootstepsClipPath,
+            "footsteps",
+            true,
+            report);
+        AudioClip guidanceClip = ValidateAudioAsset(
+            GuidanceClipPath,
+            "window guidance",
+            false,
+            report);
 
         ValidatePhase3A(window, frame, glass, opening, wall, report);
         ValidateFigure(room, floor, window, capsule, figure, start, end, report);
@@ -82,9 +106,32 @@ public static class TesisPhase3ShadowValidator
             phaseObject,
             report);
         WindowShadowView view = ValidateView(capsule, phaseObject, report);
-        WindowShadowSequence sequence = ValidateSequence(view, movement, phaseObject, report);
+        AudioSource footstepsSource = ValidateFootstepsAudio(
+            scene,
+            room,
+            floor,
+            window,
+            opening,
+            footstepsObject,
+            footstepsClip,
+            report);
+        AudioSource guidanceSource = ValidateGuidanceAudio(
+            guidanceObject,
+            guidanceClip,
+            report);
+        WindowShadowSequence sequence = ValidateSequence(
+            view,
+            movement,
+            footstepsSource,
+            guidanceSource,
+            footstepsClip,
+            guidanceClip,
+            phaseObject,
+            report);
         ValidatePhaseTwoConnection(scene, sequence, report);
         ValidatePreviousPhases(scene, report);
+        ValidateAudioListeners(scene, report);
+        ValidateNoLookDetection(scene, report);
         ValidateNoMissingScripts(scene, report);
         ValidateGlobalNameCounts(scene, report);
 
@@ -349,9 +396,138 @@ public static class TesisPhase3ShadowValidator
         return views[0];
     }
 
+    private static AudioClip ValidateAudioAsset(
+        string path,
+        string label,
+        bool recommendMono,
+        ValidationReport report)
+    {
+        AudioClip clip = AssetDatabase.LoadAssetAtPath<AudioClip>(path);
+        report.Check(
+            clip != null,
+            $"{label} AudioClip exists at {path}",
+            $"Missing or invalid AudioClip at {path}.");
+        if (clip == null)
+            return null;
+
+        report.Ok($"{label} clip: {clip.length:F2} s, {clip.channels} channel(s)");
+        AudioImporter importer = AssetImporter.GetAtPath(path) as AudioImporter;
+        report.Check(
+            importer != null,
+            $"{label} uses an AudioImporter",
+            $"Could not inspect AudioImporter settings for {path}.");
+        if (recommendMono && importer != null)
+        {
+            report.Warn(
+                clip.channels == 1 || importer.forceToMono,
+                "Footsteps clip is mono or Force To Mono is enabled",
+                "Footsteps clip is stereo with Force To Mono disabled; 3D positioning works, " +
+                "but a mono source is recommended for clearer localization.");
+        }
+
+        return clip;
+    }
+
+    private static AudioSource ValidateFootstepsAudio(
+        Scene scene,
+        Transform room,
+        Transform floor,
+        Transform window,
+        Transform opening,
+        Transform audioObject,
+        AudioClip expectedClip,
+        ValidationReport report)
+    {
+        if (audioObject == null)
+            return null;
+
+        AudioSource[] sources = audioObject.GetComponents<AudioSource>();
+        report.Check(
+            sources.Length == 1,
+            "WindowFootstepsAudio has one AudioSource",
+            $"WindowFootstepsAudio needs one AudioSource; found {sources.Length}.");
+        if (sources.Length != 1)
+            return null;
+
+        AudioSource source = sources[0];
+        report.Check(source.clip == expectedClip && expectedClip != null,
+            "Footsteps clip is assigned", "WindowFootstepsAudio has the wrong or missing clip.");
+        report.Check(!source.playOnAwake, "Footsteps Play On Awake is disabled",
+            "WindowFootstepsAudio must not Play On Awake.");
+        report.Check(!source.loop, "Footsteps Loop is disabled",
+            "WindowFootstepsAudio must not loop.");
+        report.Check(Mathf.Approximately(source.spatialBlend, 1f), "Footsteps use 3D spatial audio",
+            "WindowFootstepsAudio Spatial Blend must be 1 (3D).");
+        report.Check(Mathf.Approximately(source.dopplerLevel, 0f), "Footsteps Doppler is disabled",
+            "WindowFootstepsAudio Doppler Level must be 0.");
+        report.Check(source.rolloffMode == AudioRolloffMode.Logarithmic,
+            "Footsteps use logarithmic rolloff", "WindowFootstepsAudio must use logarithmic rolloff.");
+        report.Check(source.minDistance > 0f && source.maxDistance > source.minDistance,
+            "Footsteps distance range is valid", "WindowFootstepsAudio Min/Max Distance is invalid.");
+        report.Check(source.volume >= 0f && source.volume <= 1f, "Footsteps volume is valid",
+            "WindowFootstepsAudio volume must be between 0 and 1.");
+
+        if (opening != null)
+        {
+            report.Check(
+                Vector3.Distance(audioObject.position, opening.position) <= MaximumFunctionalAudioDistance,
+                "WindowFootstepsAudio is near ViewOpening",
+                "WindowFootstepsAudio is too far from ViewOpening.");
+        }
+        if (room != null && floor != null && window != null && opening != null)
+        {
+            Vector3 exterior = GetExteriorDirection(room, floor, window);
+            report.Check(
+                Vector3.Dot(audioObject.position - opening.position, exterior) >= -0.05f,
+                "WindowFootstepsAudio is on the exterior window side",
+                "WindowFootstepsAudio is inside the room instead of near the exterior window plane.");
+        }
+
+        Camera[] cameras = FindSceneComponents<Camera>(scene);
+        report.Check(
+            cameras.All(camera => !audioObject.IsChildOf(camera.transform)),
+            "WindowFootstepsAudio is not parented to a camera",
+            "WindowFootstepsAudio must not be a child of Main Camera.");
+        return source;
+    }
+
+    private static AudioSource ValidateGuidanceAudio(
+        Transform audioObject,
+        AudioClip expectedClip,
+        ValidationReport report)
+    {
+        if (audioObject == null)
+            return null;
+
+        AudioSource[] sources = audioObject.GetComponents<AudioSource>();
+        report.Check(
+            sources.Length == 1,
+            "WindowGuidanceAudio has one AudioSource",
+            $"WindowGuidanceAudio needs one AudioSource; found {sources.Length}.");
+        if (sources.Length != 1)
+            return null;
+
+        AudioSource source = sources[0];
+        report.Check(source.clip == expectedClip && expectedClip != null,
+            "Window guidance clip is assigned", "WindowGuidanceAudio has the wrong or missing clip.");
+        report.Check(!source.playOnAwake, "Guidance Play On Awake is disabled",
+            "WindowGuidanceAudio must not Play On Awake.");
+        report.Check(!source.loop, "Guidance Loop is disabled",
+            "WindowGuidanceAudio must not loop.");
+        report.Check(Mathf.Approximately(source.spatialBlend, 0f), "Guidance uses clear 2D audio",
+            "WindowGuidanceAudio Spatial Blend must be 0 (2D).");
+        report.Check(source.volume >= 0f && source.volume <= 1f, "Guidance volume is valid",
+            "WindowGuidanceAudio volume must be between 0 and 1.");
+        return source;
+    }
+
     private static WindowShadowSequence ValidateSequence(
         WindowShadowView expectedView,
         LinearShadowMovement expectedMovement,
+        AudioSource expectedFootstepsSource,
+        AudioSource expectedGuidanceSource,
+        AudioClip expectedFootstepsClip,
+        AudioClip expectedGuidanceClip,
         Transform phaseObject,
         ValidationReport report)
     {
@@ -374,14 +550,56 @@ public static class TesisPhase3ShadowValidator
             "WindowShadowSequence references are correct",
             "WindowShadowSequence has incorrect view or movement references.");
         report.Check(
+            serializedSequence.FindProperty("footstepsAudioSource").objectReferenceValue ==
+                expectedFootstepsSource &&
+            serializedSequence.FindProperty("guidanceAudioSource").objectReferenceValue ==
+                expectedGuidanceSource &&
+            expectedFootstepsSource != null && expectedGuidanceSource != null,
+            "WindowShadowSequence AudioSource references are correct",
+            "WindowShadowSequence has incorrect audio source references.");
+        report.Check(
+            serializedSequence.FindProperty("footstepsClip").objectReferenceValue ==
+                expectedFootstepsClip &&
+            serializedSequence.FindProperty("guidanceClip").objectReferenceValue ==
+                expectedGuidanceClip &&
+            expectedFootstepsClip != null && expectedGuidanceClip != null,
+            "WindowShadowSequence AudioClip references are correct",
+            "WindowShadowSequence has incorrect audio clip references.");
+        report.Check(
             serializedSequence.FindProperty("initialDelay").floatValue >= 0f,
             "WindowShadowSequence initial delay is valid",
             "Initial delay must not be negative.");
+        float guidanceDelay =
+            serializedSequence.FindProperty("guidanceDelayAfterFootsteps").floatValue;
+        float shadowDelay = serializedSequence.FindProperty("shadowDelayAfterGuidance").floatValue;
+        report.Check(
+            guidanceDelay >= 0f,
+            "Footsteps-to-guidance delay is non-negative",
+            "guidanceDelayAfterFootsteps must not be negative.");
+        report.Check(
+            shadowDelay > 0f,
+            "Guidance precedes shadow appearance",
+            "shadowDelayAfterGuidance must be positive so guidance precedes the shadow.");
+        report.Check(
+            guidanceDelay + shadowDelay > 0f,
+            "Footsteps begin before shadow appearance",
+            "The audio cue delays must place footsteps before the shadow.");
+        float footstepsVolume = serializedSequence.FindProperty("footstepsVolume").floatValue;
+        float guidanceVolume = serializedSequence.FindProperty("guidanceVolume").floatValue;
+        report.Check(
+            footstepsVolume >= 0f && footstepsVolume <= 1f &&
+            guidanceVolume >= 0f && guidanceVolume <= 1f,
+            "Sequence audio volumes are valid",
+            "Sequence audio volumes must be between 0 and 1.");
+        report.Check(
+            serializedSequence.FindProperty("stopFootstepsWhenMovementEnds").boolValue,
+            "Footsteps stop when movement ends",
+            "stopFootstepsWhenMovementEnds must be enabled.");
         report.Ok("WindowShadowSequence has a one-way activation guard");
         report.Check(
             phaseObject.GetComponents<AudioSource>().Length == 0,
-            "Phase3_WindowShadow has no AudioSource",
-            "Phase 3B must not add an AudioSource.");
+            "Phase3_WindowShadow keeps audio on dedicated child objects",
+            "Phase3_WindowShadow must not have a direct AudioSource; use its dedicated children.");
         return sequences[0];
     }
 
@@ -416,7 +634,7 @@ public static class TesisPhase3ShadowValidator
         }
         report.Check(
             matches == 1,
-            "Phase 2 completion connects once to Phase 3B",
+            "Phase 2 completion connects once to Phase 3C",
             $"Expected one Phase 2 completion listener for BeginSequence; found {matches}.");
     }
 
@@ -460,6 +678,26 @@ public static class TesisPhase3ShadowValidator
         report.Check(grabCubeCount == 0, "GrabCube was not reintroduced", $"Found {grabCubeCount} GrabCube object(s).");
     }
 
+    private static void ValidateAudioListeners(Scene scene, ValidationReport report)
+    {
+        AudioListener[] listeners = FindSceneComponents<AudioListener>(scene);
+        report.Check(
+            listeners.Length == 1,
+            "Scene retains exactly one AudioListener",
+            $"Expected one AudioListener; found {listeners.Length}.");
+    }
+
+    private static void ValidateNoLookDetection(Scene scene, ValidationReport report)
+    {
+        int detectorCount = FindSceneTransforms(scene)
+            .SelectMany(transform => transform.GetComponents<Component>())
+            .Count(component => component != null && component.GetType().Name == "WindowLookDetector");
+        report.Check(
+            detectorCount == 0,
+            "No WindowLookDetector or gaze reaction was added",
+            $"Found {detectorCount} WindowLookDetector component(s); gaze detection belongs to a later subphase.");
+    }
+
     private static void ValidateNoMissingScripts(Scene scene, ValidationReport report)
     {
         int count = FindSceneTransforms(scene)
@@ -477,7 +715,9 @@ public static class TesisPhase3ShadowValidator
             "ShadowEnd",
             "ShadowFigure",
             "ShadowCapsule",
-            "Phase3_WindowShadow"
+            "Phase3_WindowShadow",
+            "WindowFootstepsAudio",
+            "WindowGuidanceAudio"
         };
         foreach (string name in names)
         {
@@ -614,7 +854,7 @@ public static class TesisPhase3ShadowValidator
         public string BuildSummary()
         {
             StringBuilder builder = new StringBuilder();
-            builder.AppendLine("Phase 3B Shadow Validation");
+            builder.AppendLine("Phase 3C Audio Validation");
             builder.AppendLine();
             foreach (string line in lines)
                 builder.AppendLine(line);
