@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.Events;
 
 [DisallowMultipleComponent]
 public sealed class WindowShadowSequence : MonoBehaviour
@@ -72,13 +73,19 @@ public sealed class WindowShadowSequence : MonoBehaviour
     [SerializeField]
     private bool debugLogs;
 
+    [SerializeField]
+    private UnityEvent onNarrativeCompleted = new UnityEvent();
+
     private Coroutine sequenceCoroutine;
     private bool lookReactionConsumed;
     private bool closingAudioPlayed;
+    private bool narrativeCompletionInvoked;
 
     public SequenceState CurrentState { get; private set; } = SequenceState.Idle;
 
     public bool HasActivated { get; private set; }
+
+    public UnityEvent OnNarrativeCompleted => onNarrativeCompleted;
 
     private void Awake()
     {
@@ -87,6 +94,7 @@ public sealed class WindowShadowSequence : MonoBehaviour
         lookDetector?.ResetDetection();
         lookReactionConsumed = false;
         closingAudioPlayed = false;
+        narrativeCompletionInvoked = false;
         ConfigureAudioSource(footstepsAudioSource, footstepsClip, footstepsVolume);
         ConfigureAudioSource(guidanceAudioSource, guidanceClip, guidanceVolume);
         ConfigureAudioSource(closingAudioSource, closingClip, closingVolume);
@@ -174,8 +182,7 @@ public sealed class WindowShadowSequence : MonoBehaviour
             lookDetector?.StopDetection();
             shadowView.Hide();
             StopAudio(footstepsAudioSource);
-            CurrentState = SequenceState.Completed;
-            sequenceCoroutine = null;
+            CompleteNarrativeSequence();
             yield break;
         }
 
@@ -209,9 +216,10 @@ public sealed class WindowShadowSequence : MonoBehaviour
         shadowView.Hide();
         StopFootstepsBeforeClosing();
         PlayClosingAudio();
-        CurrentState = SequenceState.Completed;
-        sequenceCoroutine = null;
-        Log("Sequence completed.");
+        while (closingAudioSource != null && closingAudioSource.isPlaying)
+            yield return null;
+
+        CompleteNarrativeSequence();
     }
 
     public void HandleLookConfirmed()
@@ -281,6 +289,18 @@ public sealed class WindowShadowSequence : MonoBehaviour
             Log("Footsteps are being stopped to prevent overlap with the closing voice.");
 
         StopAudio(footstepsAudioSource);
+    }
+
+    private void CompleteNarrativeSequence()
+    {
+        if (narrativeCompletionInvoked)
+            return;
+
+        narrativeCompletionInvoked = true;
+        CurrentState = SequenceState.Completed;
+        sequenceCoroutine = null;
+        Log("Narrative sequence completed.");
+        onNarrativeCompleted?.Invoke();
     }
 
     private static void ConfigureAudioSource(AudioSource source, AudioClip clip, float volume)
