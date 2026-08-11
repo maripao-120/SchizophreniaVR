@@ -17,6 +17,8 @@ public static class TesisPhase3ShadowBuilder
         "Assets/Audio/Phase3/Phase3_ShadowFootsteps.mp3";
     private const string GuidanceClipPath =
         "Assets/Audio/Phase3/Phase3_WindowGuidance.mp3";
+    private const string ClosingClipPath =
+        "Assets/Audio/Phase3/Phase3_PostShadowVoices_Test.mp3";
     private const float ExteriorDistance = 0.65f;
     private const float MaximumFunctionalAudioDistance = 2.5f;
     private const float MaximumFunctionalLookTargetDistance = 0.25f;
@@ -142,6 +144,18 @@ public static class TesisPhase3ShadowBuilder
             out bool guidanceSourceCreated);
         ConfigureGuidanceAudio(guidanceSource, guidanceClip, guidanceSourceCreated);
 
+        AudioClip closingClip = AssetDatabase.LoadAssetAtPath<AudioClip>(ClosingClipPath);
+        Transform closingObject = GetOrCreateDirectChild(
+            phaseObject,
+            "WindowClosingAudio",
+            out bool closingObjectCreated);
+        if (closingObjectCreated)
+            SetLocalIdentity(closingObject);
+        AudioSource closingSource = GetOrAddSingleComponent<AudioSource>(
+            closingObject.gameObject,
+            out bool closingSourceCreated);
+        ConfigureClosingAudio(closingSource, closingClip, closingSourceCreated);
+
         WindowShadowView view = GetOrAddSingleComponent<WindowShadowView>(phaseObject.gameObject, out _);
         LinearShadowMovement movement =
             GetOrAddSingleComponent<LinearShadowMovement>(phaseObject.gameObject, out bool movementCreated);
@@ -164,8 +178,10 @@ public static class TesisPhase3ShadowBuilder
             lookDetector,
             footstepsSource,
             guidanceSource,
+            closingSource,
             footstepsClip,
             guidanceClip,
+            closingClip,
             sequenceCreated);
         ConnectLookConfirmation(lookDetector, sequence);
         ConnectPhaseTwoCompletion(scene, sequence);
@@ -181,6 +197,8 @@ public static class TesisPhase3ShadowBuilder
             Debug.LogWarning($"TesisPhase3ShadowBuilder: missing optional audio clip {FootstepsClipPath}.");
         if (guidanceClip == null)
             Debug.LogWarning($"TesisPhase3ShadowBuilder: missing optional audio clip {GuidanceClipPath}.");
+        if (closingClip == null)
+            Debug.LogWarning($"TesisPhase3ShadowBuilder: missing optional audio clip {ClosingClipPath}.");
     }
 
     private static void CalculatePath(
@@ -314,8 +332,10 @@ public static class TesisPhase3ShadowBuilder
         WindowLookDetector lookDetector,
         AudioSource footstepsSource,
         AudioSource guidanceSource,
+        AudioSource closingSource,
         AudioClip footstepsClip,
         AudioClip guidanceClip,
+        AudioClip closingClip,
         bool created)
     {
         SerializedObject serializedSequence = new SerializedObject(sequence);
@@ -324,8 +344,10 @@ public static class TesisPhase3ShadowBuilder
         serializedSequence.FindProperty("lookDetector").objectReferenceValue = lookDetector;
         serializedSequence.FindProperty("footstepsAudioSource").objectReferenceValue = footstepsSource;
         serializedSequence.FindProperty("guidanceAudioSource").objectReferenceValue = guidanceSource;
+        serializedSequence.FindProperty("closingAudioSource").objectReferenceValue = closingSource;
         serializedSequence.FindProperty("footstepsClip").objectReferenceValue = footstepsClip;
         serializedSequence.FindProperty("guidanceClip").objectReferenceValue = guidanceClip;
+        serializedSequence.FindProperty("closingClip").objectReferenceValue = closingClip;
         if (created)
             serializedSequence.FindProperty("initialDelay").floatValue = 4f;
 
@@ -456,6 +478,21 @@ public static class TesisPhase3ShadowBuilder
         bool created)
     {
         Undo.RecordObject(source, "Configure Phase 3 guidance audio");
+        source.playOnAwake = false;
+        source.loop = false;
+        source.spatialBlend = 0f;
+        source.clip = clip;
+        if (created)
+            source.volume = 1f;
+        EditorUtility.SetDirty(source);
+    }
+
+    private static void ConfigureClosingAudio(
+        AudioSource source,
+        AudioClip clip,
+        bool created)
+    {
+        Undo.RecordObject(source, "Configure Phase 3 closing audio");
         source.playOnAwake = false;
         source.loop = false;
         source.spatialBlend = 0f;

@@ -28,10 +28,16 @@ public sealed class WindowShadowSequence : MonoBehaviour
     private AudioSource guidanceAudioSource;
 
     [SerializeField]
+    private AudioSource closingAudioSource;
+
+    [SerializeField]
     private AudioClip footstepsClip;
 
     [SerializeField]
     private AudioClip guidanceClip;
+
+    [SerializeField]
+    private AudioClip closingClip;
 
     [SerializeField, Min(0f)]
     private float initialDelay = 4f;
@@ -47,6 +53,9 @@ public sealed class WindowShadowSequence : MonoBehaviour
 
     [SerializeField, Range(0f, 1f)]
     private float guidanceVolume = 1f;
+
+    [SerializeField, Range(0f, 1f)]
+    private float closingVolume = 1f;
 
     [SerializeField]
     private bool stopFootstepsWhenMovementEnds = true;
@@ -65,6 +74,7 @@ public sealed class WindowShadowSequence : MonoBehaviour
 
     private Coroutine sequenceCoroutine;
     private bool lookReactionConsumed;
+    private bool closingAudioPlayed;
 
     public SequenceState CurrentState { get; private set; } = SequenceState.Idle;
 
@@ -76,8 +86,10 @@ public sealed class WindowShadowSequence : MonoBehaviour
         shadowMovement?.ResetPosition();
         lookDetector?.ResetDetection();
         lookReactionConsumed = false;
+        closingAudioPlayed = false;
         ConfigureAudioSource(footstepsAudioSource, footstepsClip, footstepsVolume);
         ConfigureAudioSource(guidanceAudioSource, guidanceClip, guidanceVolume);
+        ConfigureAudioSource(closingAudioSource, closingClip, closingVolume);
         CurrentState = SequenceState.Idle;
     }
 
@@ -90,6 +102,7 @@ public sealed class WindowShadowSequence : MonoBehaviour
         lookDetector?.StopDetection();
         StopAudio(footstepsAudioSource);
         StopAudio(guidanceAudioSource);
+        StopAudio(closingAudioSource);
         shadowView?.Hide();
     }
 
@@ -100,6 +113,7 @@ public sealed class WindowShadowSequence : MonoBehaviour
         shadowDelayAfterGuidance = Mathf.Max(0f, shadowDelayAfterGuidance);
         footstepsVolume = Mathf.Clamp01(footstepsVolume);
         guidanceVolume = Mathf.Clamp01(guidanceVolume);
+        closingVolume = Mathf.Clamp01(closingVolume);
         minimumPauseProgress = Mathf.Clamp01(minimumPauseProgress);
         maximumPauseProgress = Mathf.Clamp01(maximumPauseProgress);
         lookReactionPauseDuration = Mathf.Max(0.01f, lookReactionPauseDuration);
@@ -193,8 +207,8 @@ public sealed class WindowShadowSequence : MonoBehaviour
 
         lookDetector?.StopDetection();
         shadowView.Hide();
-        if (stopFootstepsWhenMovementEnds)
-            StopAudio(footstepsAudioSource);
+        StopFootstepsBeforeClosing();
+        PlayClosingAudio();
         CurrentState = SequenceState.Completed;
         sequenceCoroutine = null;
         Log("Sequence completed.");
@@ -229,6 +243,44 @@ public sealed class WindowShadowSequence : MonoBehaviour
         source.volume = volume;
         source.Play();
         Log($"{cueName} started.");
+    }
+
+    private void PlayClosingAudio()
+    {
+        if (closingAudioPlayed)
+            return;
+
+        closingAudioPlayed = true;
+        if (closingAudioSource == null)
+        {
+            Debug.LogWarning(
+                "WindowShadowSequence cannot play the closing voice because its AudioSource is missing. " +
+                "The sequence will still complete.",
+                this);
+            return;
+        }
+
+        if (closingClip == null)
+        {
+            Debug.LogWarning(
+                "WindowShadowSequence cannot play the closing voice because its AudioClip is missing. " +
+                "The sequence will still complete.",
+                this);
+            return;
+        }
+
+        closingAudioSource.clip = closingClip;
+        closingAudioSource.volume = closingVolume;
+        closingAudioSource.Play();
+        Log("closing voice started.");
+    }
+
+    private void StopFootstepsBeforeClosing()
+    {
+        if (!stopFootstepsWhenMovementEnds)
+            Log("Footsteps are being stopped to prevent overlap with the closing voice.");
+
+        StopAudio(footstepsAudioSource);
     }
 
     private static void ConfigureAudioSource(AudioSource source, AudioClip clip, float volume)

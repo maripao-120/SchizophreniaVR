@@ -18,6 +18,8 @@ public static class TesisPhase3ShadowValidator
         "Assets/Audio/Phase3/Phase3_ShadowFootsteps.mp3";
     private const string GuidanceClipPath =
         "Assets/Audio/Phase3/Phase3_WindowGuidance.mp3";
+    private const string ClosingClipPath =
+        "Assets/Audio/Phase3/Phase3_PostShadowVoices_Test.mp3";
     private const float MaximumFunctionalAudioDistance = 2.5f;
     private const float MaximumFunctionalLookTargetDistance = 0.25f;
 
@@ -84,6 +86,10 @@ public static class TesisPhase3ShadowValidator
             phaseObject,
             "WindowGuidanceAudio",
             report);
+        Transform closingObject = FindUniqueDirectChild(
+            phaseObject,
+            "WindowClosingAudio",
+            report);
         WindowLookDetector lookDetector = ValidateLookDetector(
             mainCamera,
             lookTarget,
@@ -100,6 +106,7 @@ public static class TesisPhase3ShadowValidator
             "window guidance",
             false,
             report);
+        AudioClip closingClip = AssetDatabase.LoadAssetAtPath<AudioClip>(ClosingClipPath);
 
         ValidatePhase3A(window, frame, glass, opening, wall, report);
         ValidateLookTarget(window, opening, lookTarget, report);
@@ -144,6 +151,22 @@ public static class TesisPhase3ShadowValidator
         ValidateAudioListeners(scene, report);
         ValidateNoMissingScripts(scene, report);
         ValidateGlobalNameCounts(scene, report);
+        report.Section("Phase 3E Closing Audio Validation");
+        report.Check(
+            closingClip != null,
+            $"closing voice AudioClip exists at {ClosingClipPath}",
+            $"Missing or invalid AudioClip at {ClosingClipPath}.");
+        AudioSource closingSource = ValidateClosingAudio(
+            closingObject,
+            closingClip,
+            report);
+        ValidateClosingSequence(
+            sequence,
+            closingSource,
+            closingClip,
+            footstepsSource,
+            guidanceSource,
+            report);
 
         return Finish(report);
     }
@@ -675,6 +698,75 @@ public static class TesisPhase3ShadowValidator
         return source;
     }
 
+    private static AudioSource ValidateClosingAudio(
+        Transform audioObject,
+        AudioClip expectedClip,
+        ValidationReport report)
+    {
+        if (audioObject == null)
+            return null;
+
+        AudioSource[] sources = audioObject.GetComponents<AudioSource>();
+        report.Check(
+            sources.Length == 1,
+            "WindowClosingAudio has one AudioSource",
+            $"WindowClosingAudio needs one AudioSource; found {sources.Length}.");
+        if (sources.Length != 1)
+            return null;
+
+        AudioSource source = sources[0];
+        report.Check(source.clip == expectedClip && expectedClip != null,
+            "Closing voice clip is assigned", "WindowClosingAudio has the wrong or missing clip.");
+        report.Check(!source.playOnAwake, "Closing Play On Awake is disabled",
+            "WindowClosingAudio must not Play On Awake.");
+        report.Check(!source.loop, "Closing Loop is disabled",
+            "WindowClosingAudio must not loop.");
+        report.Check(Mathf.Approximately(source.spatialBlend, 0f), "Closing voice uses clear 2D audio",
+            "WindowClosingAudio Spatial Blend must be 0 (2D).");
+        report.Check(source.volume >= 0f && source.volume <= 1f, "Closing volume is valid",
+            "WindowClosingAudio volume must be between 0 and 1.");
+        return source;
+    }
+
+    private static void ValidateClosingSequence(
+        WindowShadowSequence sequence,
+        AudioSource expectedClosingSource,
+        AudioClip expectedClosingClip,
+        AudioSource footstepsSource,
+        AudioSource guidanceSource,
+        ValidationReport report)
+    {
+        if (sequence == null)
+            return;
+
+        SerializedObject serializedSequence = new SerializedObject(sequence);
+        AudioSource referencedSource =
+            serializedSequence.FindProperty("closingAudioSource").objectReferenceValue as AudioSource;
+        AudioClip referencedClip =
+            serializedSequence.FindProperty("closingClip").objectReferenceValue as AudioClip;
+        float closingVolume = serializedSequence.FindProperty("closingVolume").floatValue;
+        report.Check(
+            referencedSource == expectedClosingSource && expectedClosingSource != null,
+            "WindowShadowSequence references WindowClosingAudio",
+            "WindowShadowSequence has the wrong or missing closing AudioSource reference.");
+        report.Check(
+            referencedClip == expectedClosingClip && expectedClosingClip != null,
+            "WindowShadowSequence references the closing voice clip",
+            "WindowShadowSequence has the wrong or missing closing AudioClip reference.");
+        report.Check(
+            closingVolume >= 0f && closingVolume <= 1f,
+            "WindowShadowSequence closing volume is valid",
+            "WindowShadowSequence closingVolume must be between 0 and 1.");
+        report.Check(
+            referencedSource != null && referencedSource != footstepsSource,
+            "Closing voice does not share the Footsteps AudioSource",
+            "Closing voice must not share the Footsteps AudioSource.");
+        report.Check(
+            referencedSource != null && referencedSource != guidanceSource,
+            "Closing voice does not share the Guidance AudioSource",
+            "Closing voice must not share the Guidance AudioSource.");
+    }
+
     private static WindowShadowSequence ValidateSequence(
         WindowShadowView expectedView,
         LinearShadowMovement expectedMovement,
@@ -919,6 +1011,7 @@ public static class TesisPhase3ShadowValidator
             "Phase3_WindowShadow",
             "WindowFootstepsAudio",
             "WindowGuidanceAudio",
+            "WindowClosingAudio",
             "WindowLookTarget"
         };
         foreach (string name in names)
@@ -1045,6 +1138,12 @@ public static class TesisPhase3ShadowValidator
         public void Ok(string label)
         {
             lines.Add("[OK] " + label);
+        }
+
+        public void Section(string title)
+        {
+            lines.Add(string.Empty);
+            lines.Add(title);
         }
 
         private void Error(string message)
